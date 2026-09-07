@@ -1406,12 +1406,6 @@ export default function ChaosSigilForge() {
                       </button>
                     </div>
                   )}
-
-                  {!modalChooserOpen && (
-                    <div className="absolute bottom-5 inset-x-0 text-center text-[11px] uppercase tracking-[0.2em] text-white/20">
-                      Hold the sigil to download
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
