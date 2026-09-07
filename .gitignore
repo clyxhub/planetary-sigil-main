@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+*.log
+
+# Secrets & credentials — NEVER commit these
+*.jks
+*.keystore
+*.keystore.properties
+keystore.properties
+gradle.properties.local
+
+# Local env / tooling
+.env
+.env.local
+.idea/
+.vscode/
+
+# Backups (contains alternate/old Android scaffolding)
+android_backup/
+
+# OS / editor
+.DS_Store
+Thumbs.db

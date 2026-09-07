@@ -1,0 +1,29 @@
+{
+  "name": "planetary-sigils-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/geolocation": "^5.0.0",
+    "lucide-react": "^1.23.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^5.7.8",
+    "@capacitor/cli": "^5.7.8",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@vitejs/plugin-react": "3.0.0",
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^4.3.2",
+    "vite": "4.0.0"
+  }
+}

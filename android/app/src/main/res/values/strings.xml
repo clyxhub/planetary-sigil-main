@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Planetary Sigils</string>
+    <string name="title_activity_main">Planetary Sigils</string>
+    <string name="package_name">com.clyxhub6.planetarysigils</string>
+    <string name="custom_url_scheme">com.clyxhub6.planetarysigils</string>
+</resources>
