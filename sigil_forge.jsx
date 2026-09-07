@@ -264,6 +264,9 @@ export default function ChaosSigilForge() {
   const [showNumbers, setShowNumbers] = useState(false);
   const [showPowers, setShowPowers] = useState(false);
   const [sigilModalOpen, setSigilModalOpen] = useState(false);
+  const [modalChooserOpen, setModalChooserOpen] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const longPressStartRef = useRef(null);
   const [removeVowels, setRemoveVowels] = useState(true);
   const [removeRepeats, setRemoveRepeats] = useState(true);
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -441,44 +444,79 @@ export default function ChaosSigilForge() {
     return path;
   }, [points, curvature]);
 
-  const downloadSigil = async (format) => {
+  const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
   <rect width="360" height="360" fill="black"/>
   <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
     const fileName = `sigil-${planet.name.toLowerCase()}-${Date.now()}`;
-    if (format === 'svg') {
-      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
+
+    const triggerDownload = (url, ext) => {
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${fileName}.svg`;
+      a.download = `${fileName}.${ext}`;
+      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      const size = 2048;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
+      // Defer removal + revoke so the browser finishes starting the download.
+      setTimeout(() => {
+        document.body.removeChild(a);
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+      }, 1000);
+    };
+
+    if (format === 'svg') {
       const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      img.src = url;
-      await new Promise((resolve) => { img.onload = resolve; });
+      const blobUrl = URL.createObjectURL(blob);
+      triggerDownload(blobUrl, 'svg');
+      return;
+    }
+
+    // Raster (PNG / JPEG): render the SVG into an offscreen canvas then export.
+    const size = 2048;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const blobUrl = URL.createObjectURL(blob);
+    img.onload = () => {
       ctx.drawImage(img, 0, 0, size, size);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
       const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
       const ext = format === 'jpeg' ? 'jpg' : 'png';
       const dataUrl = canvas.toDataURL(mimeType, 0.92);
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `${fileName}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      triggerDownload(dataUrl, ext);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      alert('Could not render the sigil to ' + format.toUpperCase() + '. Try the SVG export instead.');
+    };
+    img.src = blobUrl;
+  };
+
+  const closeSigilModal = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    setModalChooserOpen(false);
+    setSigilModalOpen(false);
+  };
+
+  const startSigilPress = (e) => {
+    longPressStartRef.current = { x: e.clientX, y: e.clientY };
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    setModalChooserOpen(false);
+    longPressTimerRef.current = setTimeout(() => setModalChooserOpen(true), 500);
+  };
+
+  const cancelSigilPress = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  };
+
+  const moveSigilPress = (e) => {
+    const start = longPressStartRef.current;
+    if (start && (Math.abs(e.clientX - start.x) > 12 || Math.abs(e.clientY - start.y) > 12)) {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     }
   };
 
@@ -1317,38 +1355,24 @@ export default function ChaosSigilForge() {
           </div>
 
           {sigilModalOpen && (
-            <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setSigilModalOpen(false)}>
+            <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={closeSigilModal}>
               <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                <div className="flex gap-2 absolute -top-12 right-0">
-                  <button
-                    onClick={() => downloadSigil('svg')}
-                    className="w-12 h-12 rounded-full border border-white/10 bg-zinc-900 flex items-center justify-center hover:scale-105 transition-all text-xs font-bold"
-                    title="Download SVG"
-                  >
-                    SVG
-                  </button>
-                  <button
-                    onClick={() => downloadSigil('png')}
-                    className="w-12 h-12 rounded-full border border-white/10 bg-zinc-900 flex items-center justify-center hover:scale-105 transition-all text-xs font-bold"
-                    title="Download PNG"
-                  >
-                    PNG
-                  </button>
-                  <button
-                    onClick={() => downloadSigil('jpeg')}
-                    className="w-12 h-12 rounded-full border border-white/10 bg-zinc-900 flex items-center justify-center hover:scale-105 transition-all text-xs font-bold"
-                    title="Download JPEG"
-                  >
-                    JPG
-                  </button>
-                  <button
-                    onClick={() => setSigilModalOpen(false)}
-                    className="w-12 h-12 rounded-full border border-white/10 bg-zinc-900 flex items-center justify-center hover:scale-105 transition-all"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="rounded-3xl border border-white/10 bg-black p-8">
+                <button
+                  onClick={closeSigilModal}
+                  aria-label="Close sigil"
+                  className="absolute -top-12 right-0 w-10 h-10 rounded-full border border-white/10 bg-zinc-900 flex items-center justify-center hover:scale-105 transition-all"
+                >
+                  <X size={18} />
+                </button>
+
+                <div
+                  className="rounded-3xl border border-white/10 bg-black p-8 select-none cursor-pointer relative"
+                  onPointerDown={startSigilPress}
+                  onPointerUp={cancelSigilPress}
+                  onPointerLeave={cancelSigilPress}
+                  onPointerCancel={cancelSigilPress}
+                  onPointerMove={moveSigilPress}
+                >
                   <svg viewBox="0 0 360 360" className="w-[600px] max-w-full aspect-square">
                     <path
                       d={pathData}
@@ -1359,6 +1383,35 @@ export default function ChaosSigilForge() {
                       strokeLinejoin="round"
                     />
                   </svg>
+
+                  {modalChooserOpen && (
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-black/90 border border-white/10 backdrop-blur-md rounded-2xl p-2">
+                      <button
+                        onClick={() => downloadSigil('svg')}
+                        className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
+                      >
+                        SVG
+                      </button>
+                      <button
+                        onClick={() => downloadSigil('png')}
+                        className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
+                      >
+                        PNG
+                      </button>
+                      <button
+                        onClick={() => downloadSigil('jpeg')}
+                        className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
+                      >
+                        JPEG
+                      </button>
+                    </div>
+                  )}
+
+                  {!modalChooserOpen && (
+                    <div className="absolute bottom-5 inset-x-0 text-center text-[11px] uppercase tracking-[0.2em] text-white/20">
+                      Hold the sigil to download
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
