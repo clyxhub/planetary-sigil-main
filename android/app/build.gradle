@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
-def keystorePath = System.getenv("KEYSTORE_PATH")
-def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-def keyAlias = System.getenv("KEY_ALIAS")
-def keyPassword = System.getenv("KEY_PASSWORD")
+def ksFilePath = System.getenv("KEYSTORE_PATH")
+def storePasswordValue = System.getenv("KEYSTORE_PASSWORD")
+def keyAliasName = System.getenv("KEY_ALIAS")
+def keyAliasPassword = System.getenv("KEY_PASSWORD")
 
 android {
     namespace "com.clyxhub6.planetarysigils"
@@ -25,11 +25,11 @@ android {
     }
     signingConfigs {
         release {
-            if (keystorePath) {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+            if (ksFilePath) {
+                storeFile file(ksFilePath)
+                storePassword storePasswordValue
+                keyAlias keyAliasName
+                keyPassword keyAliasPassword
             }
         }
     }
@@ -37,7 +37,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (keystorePath) {
+            if (ksFilePath) {
                 signingConfig signingConfigs.release
             }
         }
