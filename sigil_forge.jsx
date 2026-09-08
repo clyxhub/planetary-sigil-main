@@ -121,7 +121,7 @@ const PLANETAL_CORRESPONDENCES = {
     archangel: { en: "Cassiel", he: "קסיאל" },
     intelligence: { en: "Agiel", he: "אגיאל" },
     spirit: { en: "Zazel", he: "זאזל" },
-    divine: { en: "Elohim", he: "אלוהים" },
+    divine: { en: "YHVH Elohim", he: "יהוה אלוהים" },
   },
   Jupiter: {
     sign: "♃",
