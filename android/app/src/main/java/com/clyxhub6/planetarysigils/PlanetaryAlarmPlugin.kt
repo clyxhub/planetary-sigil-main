@@ -190,7 +190,6 @@ class PlanetaryAlarmPlugin : Plugin() {
             call.reject("Could not write the file")
         }
     }
-    }
 
     @PluginMethod
     fun cancel(call: PluginCall) {
