@@ -141,7 +141,7 @@ class PlanetaryAlarmPlugin : Plugin() {
             else -> "image/png"
         }
         val bytes = if (svg != null) svg.toByteArray() else {
-            Base64.decode(dataUrl.substringAfter(","), Base64.DEFAULT)
+            Base64.decode(dataUrl!!.substringAfter(","), Base64.DEFAULT)
         }
         if (bytes.isEmpty()) {
             call.reject("Could not decode data")
