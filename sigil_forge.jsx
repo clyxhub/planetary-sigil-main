@@ -114,62 +114,56 @@ const PLANETS_BY_NAME = PLANETS.reduce((acc, p) => {
 }, {});
 
 // Traditional ceremonial-planetary correspondences (Agrippa / 777 tradition).
+// divine: Hebrew Divine Name (El = Jupiter, Elohim = Saturn, etc.)
 const PLANETAL_CORRESPONDENCES = {
   Saturn: {
     sign: "♄",
-    archangel: "Cassiel",
-    intelligence: "Agiel",
-    spirit: "Zazel",
-    divineNameEng: "El",
-    divineNameHeb: "אל",
+    archangel: { en: "Cassiel", he: "קסיאל" },
+    intelligence: { en: "Agiel", he: "אגיאל" },
+    spirit: { en: "Zazel", he: "זאזל" },
+    divine: { en: "Elohim", he: "אלוהים" },
   },
   Jupiter: {
     sign: "♃",
-    archangel: "Sachiel",
-    intelligence: "Iophiel",
-    spirit: "Hismael",
-    divineNameEng: "El",
-    divineNameHeb: "אל",
+    archangel: { en: "Sachiel", he: "שכאל" },
+    intelligence: { en: "Iophiel", he: "יופיאל" },
+    spirit: { en: "Hismael", he: "היסמאל" },
+    divine: { en: "El", he: "אל" },
   },
   Mars: {
     sign: "♂",
-    archangel: "Samael",
-    intelligence: "Graphiel",
-    spirit: "Bartzabel",
-    divineNameEng: "Elohim Gibor",
-    divineNameHeb: "אֱלֹהִים גִּבּוֹר",
+    archangel: { en: "Samael", he: "סמאל" },
+    intelligence: { en: "Graphiel", he: "גרפיאל" },
+    spirit: { en: "Bartzabel", he: "ברצבל" },
+    divine: { en: "Elohim Gibor", he: "אלוהים גבור" },
   },
   Sun: {
     sign: "☉",
-    archangel: "Raphael",
-    intelligence: "Nakhiel",
-    spirit: "Sorath",
-    divineNameEng: "YHVH Eloah Va-Daath",
-    divineNameHeb: "יהוה אלוה ודעת",
+    archangel: { en: "Raphael", he: "רפאל" },
+    intelligence: { en: "Nakhiel", he: "נחיאל" },
+    spirit: { en: "Sorath", he: "סורת" },
+    divine: { en: "YHVH Eloah Va-Daath", he: "יהוה אלוה ודעת" },
   },
   Venus: {
     sign: "♀",
-    archangel: "Haniel",
-    intelligence: "Hagiel",
-    spirit: "Kedemel",
-    divineNameEng: "YHVH Tzabaoth",
-    divineNameHeb: "יהוה צבאות",
+    archangel: { en: "Haniel", he: "חניאל" },
+    intelligence: { en: "Hagiel", he: "הגיאל" },
+    spirit: { en: "Kedemel", he: "קדמאל" },
+    divine: { en: "YHVH Tzabaoth", he: "יהוה צבאות" },
   },
   Mercury: {
     sign: "☿",
-    archangel: "Raphael",
-    intelligence: "Tiriel",
-    spirit: "Taphthartharath",
-    divineNameEng: "Elohim Tzabaoth",
-    divineNameHeb: "אֱלֹהִים צְבָאוֹת",
+    archangel: { en: "Raphael", he: "רפאל" },
+    intelligence: { en: "Tiriel", he: "תיריאל" },
+    spirit: { en: "Taphthartharath", he: "תפתרתרת" },
+    divine: { en: "Elohim Tzabaoth", he: "אלוהים צבאות" },
   },
   Moon: {
     sign: "☾",
-    archangel: "Gabriel",
-    intelligence: "Malkah Be-Tarshishim",
-    spirit: "Schad Barschemoth",
-    divineNameEng: "Shaddai El Chai",
-    divineNameHeb: "שַׁדַּי אֵל חַי",
+    archangel: { en: "Gabriel", he: "גבריאל" },
+    intelligence: { en: "Malkah Be-Tarshishim", he: "מלכה בתרשישים" },
+    spirit: { en: "Schad Barschemoth", he: "שד ברשמות" },
+    divine: { en: "Shaddai El Chai", he: "שדי אל חי" },
   },
 };
 
@@ -357,6 +351,7 @@ export default function ChaosSigilForge() {
   const [showIntelligence, setShowIntelligence] = useState(false);
   const [showSpirit, setShowSpirit] = useState(false);
   const [showDivineName, setShowDivineName] = useState(false);
+  const [showCorrLang, setShowCorrLang] = useState("en"); // en | he
   const longPressTimerRef = useRef(null);
   const longPressStartRef = useRef(null);
   const [removeVowels, setRemoveVowels] = useState(true);
@@ -679,6 +674,59 @@ export default function ChaosSigilForge() {
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     }
   };
+
+  const corr = PLANETAL_CORRESPONDENCES[planet.name] || {};
+  const langText = (o) =>
+    showCorrLang === "he" ? (o && o.he) || (o && o.en) : (o && o.en) || (o && o.he);
+  const archText = langText(corr.archangel);
+  const intelText = langText(corr.intelligence);
+  const spiritText = langText(corr.spirit);
+  const divineText = langText(corr.divine);
+  const sealWording = showCorrLang === "he";
+  const sealNameSize = sealWording ? 26 : 18;
+
+  // Talismanic seal drawn around the sigil: ring + planet sign + names at the quarters.
+  const buildSeal = () => (
+    <>
+      {showSign && (
+        <text
+          x="180" y="180"
+          textAnchor="middle" dominantBaseline="central"
+          fontSize="240"
+          fill={planet.color}
+          opacity="0.13"
+        >
+          {corr.sign}
+        </text>
+      )}
+      {(showArchangel || showIntelligence || showSpirit || showDivineName) && (
+        <>
+          <circle cx="180" cy="180" r="168" fill="none" stroke={planet.color} strokeWidth="1.4" opacity="0.4" />
+          <circle cx="180" cy="180" r="146" fill="none" stroke={planet.color} strokeWidth="0.8" opacity="0.24" />
+          {showArchangel && (
+            <text x="180" y="46" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize}>
+              {archText}
+            </text>
+          )}
+          {showIntelligence && (
+            <text x="326" y="180" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize} transform="rotate(90 326 180)">
+              {intelText}
+            </text>
+          )}
+          {showSpirit && (
+            <text x="180" y="330" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize}>
+              {spiritText}
+            </text>
+          )}
+          {showDivineName && (
+            <text x="34" y="180" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize} transform="rotate(-90 34 180)">
+              {divineText}
+            </text>
+          )}
+        </>
+      )}
+    </>
+  );
 
   const activeTheme = THEMES.find((t) => t.id === theme) || THEMES[0];
 
@@ -1508,17 +1556,7 @@ export default function ChaosSigilForge() {
 
             <div className="rounded-3xl border border-white/10 bg-black/60 min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
-                {showSign && (
-                  <text
-                    x="180" y="180"
-                    textAnchor="middle" dominantBaseline="central"
-                    fontSize="230"
-                    fill={planet.color}
-                    opacity="0.13"
-                  >
-                    {PLANETAL_CORRESPONDENCES[planet.name]?.sign}
-                  </text>
-                )}
+                {buildSeal()}
                 <path
                   d={pathData}
                   fill="none"
@@ -1537,6 +1575,23 @@ export default function ChaosSigilForge() {
 
             <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 grow">Wording</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setShowCorrLang('en')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${showCorrLang === 'en' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    onClick={() => setShowCorrLang('he')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${showCorrLang === 'he' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                  >
+                    עברית
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-zinc-500 grow">Planet Sign</span>
                 <button
                   onClick={() => setShowSign(!showSign)}
@@ -1546,18 +1601,18 @@ export default function ChaosSigilForge() {
                 </button>
               </div>
               {[
-                { key: 'archangel', label: 'Archangel', get: () => setShowArchangel(!showArchangel), on: showArchangel, val: PLANETAL_CORRESPONDENCES[planet.name]?.archangel },
-                { key: 'intelligence', label: 'Intelligence', get: () => setShowIntelligence(!showIntelligence), on: showIntelligence, val: PLANETAL_CORRESPONDENCES[planet.name]?.intelligence },
-                { key: 'spirit', label: 'Spirit', get: () => setShowSpirit(!showSpirit), on: showSpirit, val: PLANETAL_CORRESPONDENCES[planet.name]?.spirit },
-                { key: 'divine', label: 'Divine Name', get: () => setShowDivineName(!showDivineName), on: showDivineName, val: PLANETAL_CORRESPONDENCES[planet.name]?.divineNameEng },
+                { key: 'archangel', label: 'Archangel', get: () => setShowArchangel(!showArchangel), on: showArchangel, val: corr.archangel?.en },
+                { key: 'intelligence', label: 'Intelligence', get: () => setShowIntelligence(!showIntelligence), on: showIntelligence, val: corr.intelligence?.en },
+                { key: 'spirit', label: 'Spirit', get: () => setShowSpirit(!showSpirit), on: showSpirit, val: corr.spirit?.en },
+                { key: 'divine', label: 'Divine Name', get: () => setShowDivineName(!showDivineName), on: showDivineName, val: corr.divine?.en },
               ].map((row) => (
                 <div key={row.key} className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-500">{row.label}</span>
+                  <span className="text-zinc-500 grow">{row.label}</span>
                   <span className="flex items-center gap-2">
-                    {row.on && <span className="text-zinc-300">{row.val}</span>}
+                    {row.on && <span className="text-zinc-300 truncate max-w-[120px]">{row.val}</span>}
                     <button
                       onClick={row.get}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${row.on ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all shrink-0 ${row.on ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
                     >
                       {row.on ? 'On' : 'Off'}
                     </button>
@@ -1568,10 +1623,11 @@ export default function ChaosSigilForge() {
 
             {showArchangel || showIntelligence || showSpirit || showDivineName ? (
               <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3 space-y-2 text-xs">
-                {showArchangel && <div className="flex justify-between gap-3"><span className="text-zinc-500">Archangel</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.archangel}</span></div>}
-                {showIntelligence && <div className="flex justify-between gap-3"><span className="text-zinc-500">Intelligence</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.intelligence}</span></div>}
-                {showSpirit && <div className="flex justify-between gap-3"><span className="text-zinc-500">Spirit</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.spirit}</span></div>}
-                {showDivineName && <div className="flex justify-between gap-3"><span className="text-zinc-500">Divine Name</span><span className="text-zinc-200 text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.divineNameEng} <span className="block text-zinc-300 text-sm" dir="rtl">{PLANETAL_CORRESPONDENCES[planet.name]?.divineNameHeb}</span></span></div>}
+                <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Inscribed names</div>
+                {showArchangel && <div className="flex justify-between gap-3"><span className="text-zinc-500">Archangel</span><span className="text-white text-right">{archText}</span></div>}
+                {showIntelligence && <div className="flex justify-between gap-3"><span className="text-zinc-500">Intelligence</span><span className="text-white text-right">{intelText}</span></div>}
+                {showSpirit && <div className="flex justify-between gap-3"><span className="text-zinc-500">Spirit</span><span className="text-white text-right">{spiritText}</span></div>}
+                {showDivineName && <div className="flex justify-between gap-3"><span className="text-zinc-500">Divine Name</span><span className="text-zinc-200 text-right" dir={showCorrLang === 'he' ? 'rtl' : undefined}>{divineText}</span></div>}
               </div>
             ) : null}
 
@@ -1602,6 +1658,7 @@ export default function ChaosSigilForge() {
                   onPointerMove={moveSigilPress}
                 >
                   <svg viewBox="0 0 360 360" className="w-[600px] max-w-full aspect-square">
+                    {buildSeal()}
                     <path
                       d={pathData}
                       fill="none"
