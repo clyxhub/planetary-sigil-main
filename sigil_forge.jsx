@@ -730,16 +730,16 @@ export default function ChaosSigilForge() {
   const activeTheme = THEMES.find((t) => t.id === theme) || THEMES[0];
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-x-hidden relative" data-theme={theme}>
+    <div className="min-h-dvh bg-black text-white overflow-x-hidden relative" data-theme={theme}>
       <div
         className="absolute inset-0 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: `radial-gradient(circle at top, ${activeTheme.glow}, transparent 40%)` }}
       />
 
-      <div className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10">
-        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between safe-top">
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between safe-top">
           <div>
-            <h1 className="text-2xl font-black bg-gradient-to-r from-violet-300 via-cyan-200 to-yellow-200 bg-clip-text text-transparent">
+            <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-violet-300 via-cyan-200 to-yellow-200 bg-clip-text text-transparent drop-shadow">
               Planetary Sigils
             </h1>
             <p className="text-[10px] uppercase tracking-[0.4em] text-zinc-500 mt-1">
@@ -783,11 +783,11 @@ export default function ChaosSigilForge() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
       {menuOpen && (
         <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="max-w-[900px] ml-auto min-h-screen bg-zinc-950 border-l border-white/10 p-6">
+          <div className="max-w-[900px] ml-auto min-h-dvh bg-zinc-950 border-l border-white/10 p-6 pb-[env(safe-area-inset-bottom,2rem)]">
             <div className="mt-16 flex gap-3 overflow-x-auto pb-4">
               {[
                 { key: 'guide', label: 'Practice', icon: MoonStar, color: 'cyan' },
@@ -1641,7 +1641,7 @@ export default function ChaosSigilForge() {
 
           {sigilModalOpen && (
             <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={closeSigilModal}>
-              <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <div className="relative max-w-[90vw] max-h-[90dvh] pb-[env(safe-area-inset-bottom,1rem)]" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={closeSigilModal}
                   aria-label="Close sigil"
