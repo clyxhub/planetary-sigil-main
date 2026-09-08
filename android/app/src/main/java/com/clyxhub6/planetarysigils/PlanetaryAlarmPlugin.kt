@@ -105,46 +105,10 @@ class PlanetaryAlarmPlugin : Plugin() {
             call.reject("dataUrl required")
             return
         }
-
         val base64 = dataUrl.substringAfter(",")
         val bytes = Base64.decode(base64, Base64.DEFAULT)
-        val context = context
         val mime = if (fileName.endsWith("jpg") || fileName.endsWith("jpeg")) "image/jpeg" else "image/png"
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+: save to shared Downloads via MediaStore (no permission needed).
-                val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                    put(MediaStore.Images.Media.MIME_TYPE, mime)
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Download/PlanetarySigils")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
-                }
-                val resolver = context.contentResolver
-                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                if (uri == null) {
-                    call.reject("Could not create media entry")
-                    return
-                }
-                val os = resolver.openOutputStream(uri)
-                os?.write(bytes)
-                os?.close()
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-            } else {
-                // Older Android: app-private pictures dir (no permission needed).
-                val dir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: context.filesDir
-                val file = File(dir, fileName)
-                FileOutputStream(file).use { it.write(bytes) }
-            }
-            val ret = JSObject()
-            ret.put("success", true)
-            call.resolve(ret)
-        } catch (e: Exception) {
-            Log.e("PlanetaryAlarm", "saveMedia failed", e)
-            call.reject("save failed: ${e.message}")
-        }
+        writeOut(bytes, fileName, mime, call)
     }
 
     @PluginMethod
@@ -155,39 +119,77 @@ class PlanetaryAlarmPlugin : Plugin() {
             call.reject("svg required")
             return
         }
-
         val bytes = svg.toByteArray()
+        writeOut(bytes, fileName, "image/svg+xml", call)
+    }
+
+    // Resilient save: tries MediaStore Downloads (shared, discoverable), then an
+    // app-external directory as a fallback. Only rejects if nothing could be written.
+    private fun writeOut(bytes: ByteArray, fileName: String, mime: String, call: PluginCall) {
+        val context = context
+        var wrote = false
+        var where = "Downloads/PlanetarySigils"
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                    put(MediaStore.Downloads.MIME_TYPE, "image/svg+xml")
-                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/PlanetarySigils")
-                    put(MediaStore.Downloads.IS_PENDING, 1)
+                val resolver = context.contentResolver
+                // Strategy A: MediaStore Downloads with a friendly subfolder.
+                for (relPath in listOf("Download/PlanetarySigils", "Download")) {
+                    try {
+                        val values = ContentValues().apply {
+                            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                            put(MediaStore.Downloads.MIME_TYPE, mime)
+                            put(MediaStore.Downloads.RELATIVE_PATH, relPath)
+                            put(MediaStore.Downloads.IS_PENDING, 1)
+                        }
+                        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        if (uri != null) {
+                            val os = resolver.openOutputStream(uri)
+                            os?.write(bytes)
+                            os?.close()
+                            values.clear()
+                            values.put(MediaStore.Downloads.IS_PENDING, 0)
+                            resolver.update(uri, values, null, null)
+                            wrote = true
+                            where = if (relPath.contains("PlanetarySigils")) "Downloads/PlanetarySigils" else "Downloads"
+                            break
+                        }
+                    } catch (e: Exception) {
+                        Log.w("PlanetaryAlarm", "MediaStore save to '$relPath' failed", e)
+                    }
                 }
-                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                if (uri == null) {
-                    call.reject("Could not create download entry")
-                    return
-                }
-                val os = context.contentResolver.openOutputStream(uri)
-                os?.write(bytes)
-                os?.close()
-                values.clear()
-                values.put(MediaStore.Downloads.IS_PENDING, 0)
-                context.contentResolver.update(uri, values, null, null)
-            } else {
-                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
-                File(dir, fileName).writeBytes(bytes)
             }
-            val ret = JSObject()
-            ret.put("success", true)
-            call.resolve(ret)
+
+            // Strategy B: app-external files dir (no permission needed) + index it.
+            if (!wrote) {
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+                val file = File(dir, fileName)
+                try {
+                    file.writeBytes(bytes)
+                    try {
+                        android.media.MediaScannerConnection.scanFile(
+                            context, arrayOf(file.absolutePath), arrayOf(mime), null
+                        )
+                    } catch (se: Exception) { Log.w("PlanetaryAlarm", "scan failed", se) }
+                    wrote = true
+                    where = "app files/Downloads"
+                } catch (e: Exception) {
+                    Log.e("PlanetaryAlarm", "App-dir save failed", e)
+                }
+            }
         } catch (e: Exception) {
-            Log.e("PlanetaryAlarm", "saveSvg failed", e)
-            call.reject("save failed: ${e.message}")
+            Log.e("PlanetaryAlarm", "writeOut failed", e)
         }
+
+        val ret = JSObject()
+        if (wrote) {
+            ret.put("success", true)
+            ret.put("where", where)
+            call.resolve(ret)
+        } else {
+            call.reject("Could not write the file")
+        }
+    }
     }
 
     @PluginMethod

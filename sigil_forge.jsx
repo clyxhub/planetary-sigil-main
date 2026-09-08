@@ -139,7 +139,7 @@ const PLANETAL_CORRESPONDENCES = {
   },
   Sun: {
     sign: "☉",
-    archangel: { en: "Raphael", he: "רפאל" },
+    archangel: { en: "Michael", he: "מיכאל" },
     intelligence: { en: "Nakhiel", he: "נחיאל" },
     spirit: { en: "Sorath", he: "סורת" },
     divine: { en: "YHVH Eloah Va-Daath", he: "יהוה אלוה ודעת" },
