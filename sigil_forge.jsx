@@ -378,6 +378,7 @@ export default function ChaosSigilForge() {
   const [theme, setTheme] = useState(() => loadPersist("ps_theme", "night"));
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const timersRef = useRef([]);
+  const webTimersRef = useRef({});
 
   const notifyKeys = useMemo(
     () => new Set(scheduledAlarms.map((a) => String(a.ts))),
@@ -515,11 +516,33 @@ export default function ChaosSigilForge() {
       }
     } else {
       if (isAdding) {
-        if (notifPermission === "default") requestNotifPermission();
-        // Web fallback (immediate alert to indicate it works in native)
-        alert(`Native alarm would be scheduled for ${hour.planet} at ${formatClock(hour.start)}${leadMinutes > 0 ? ` with a reminder ${leadMinutes} min before` : ''}`);
+        if (notifPermission === "default") await requestNotifPermission();
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const nowMs = Date.now();
+          if (leadMinutes > 0) {
+            const remindAt = ts - leadMinutes * 60000;
+            if (remindAt > nowMs) {
+              webTimersRef.current[ts] = setTimeout(
+                () => new Notification(`Coming up: ${hour.planet} hour`, { body: `The ${hour.planet} hour begins in ${leadMinutes} min.` }),
+                remindAt - nowMs
+              );
+            }
+          }
+          if (ts > nowMs) {
+            if (webTimersRef.current[ts]) clearTimeout(webTimersRef.current[ts]);
+            webTimersRef.current[ts] = setTimeout(
+              () => new Notification(`${hour.planet} hour`, { body: `The ${hour.planet} hour has begun.` }),
+              ts - nowMs
+            );
+          }
+          alert(`Notification scheduled for ${hour.planet} at ${formatClock(hour.start)}${leadMinutes > 0 ? ` + reminder ${leadMinutes} min before` : ''}. Keep this tab open.`);
+        } else {
+          alert('Enable notifications in your browser to receive hour alerts.');
+        }
       } else {
-        alert(`Native alarm for ${hour.planet} at ${formatClock(hour.start)} would be cancelled`);
+        if (webTimersRef.current[ts]) clearTimeout(webTimersRef.current[ts]);
+        delete webTimersRef.current[ts];
+        alert(`Reminder for ${hour.planet} at ${formatClock(hour.start)} is now off.`);
       }
     }
   };
