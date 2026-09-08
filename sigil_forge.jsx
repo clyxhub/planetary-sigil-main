@@ -113,6 +113,66 @@ const PLANETS_BY_NAME = PLANETS.reduce((acc, p) => {
   return acc;
 }, {});
 
+// Traditional ceremonial-planetary correspondences (Agrippa / 777 tradition).
+const PLANETAL_CORRESPONDENCES = {
+  Saturn: {
+    sign: "♄",
+    archangel: "Cassiel",
+    intelligence: "Agiel",
+    spirit: "Zazel",
+    divineNameEng: "El",
+    divineNameHeb: "אל",
+  },
+  Jupiter: {
+    sign: "♃",
+    archangel: "Sachiel",
+    intelligence: "Iophiel",
+    spirit: "Hismael",
+    divineNameEng: "El",
+    divineNameHeb: "אל",
+  },
+  Mars: {
+    sign: "♂",
+    archangel: "Samael",
+    intelligence: "Graphiel",
+    spirit: "Bartzabel",
+    divineNameEng: "Elohim Gibor",
+    divineNameHeb: "אֱלֹהִים גִּבּוֹר",
+  },
+  Sun: {
+    sign: "☉",
+    archangel: "Raphael",
+    intelligence: "Nakhiel",
+    spirit: "Sorath",
+    divineNameEng: "YHVH Eloah Va-Daath",
+    divineNameHeb: "יהוה אלוה ודעת",
+  },
+  Venus: {
+    sign: "♀",
+    archangel: "Haniel",
+    intelligence: "Hagiel",
+    spirit: "Kedemel",
+    divineNameEng: "YHVH Tzabaoth",
+    divineNameHeb: "יהוה צבאות",
+  },
+  Mercury: {
+    sign: "☿",
+    archangel: "Raphael",
+    intelligence: "Tiriel",
+    spirit: "Taphthartharath",
+    divineNameEng: "Elohim Tzabaoth",
+    divineNameHeb: "אֱלֹהִים צְבָאוֹת",
+  },
+  Moon: {
+    sign: "☾",
+    archangel: "Gabriel",
+    intelligence: "Malkah Be-Tarshishim",
+    spirit: "Schad Barschemoth",
+    divineNameEng: "Shaddai El Chai",
+    divineNameHeb: "שַׁדַּי אֵל חַי",
+  },
+};
+
 // ---------------------------------------------------------------------------
 // PLANETARY HOURS ENGINE
 // Everything below is pure math (no network calls, no geocoding API).
@@ -292,6 +352,11 @@ export default function ChaosSigilForge() {
   const [showPowers, setShowPowers] = useState(false);
   const [sigilModalOpen, setSigilModalOpen] = useState(false);
   const [modalChooserOpen, setModalChooserOpen] = useState(false);
+  const [showSign, setShowSign] = useState(true);
+  const [showArchangel, setShowArchangel] = useState(false);
+  const [showIntelligence, setShowIntelligence] = useState(false);
+  const [showSpirit, setShowSpirit] = useState(false);
+  const [showDivineName, setShowDivineName] = useState(false);
   const longPressTimerRef = useRef(null);
   const longPressStartRef = useRef(null);
   const [removeVowels, setRemoveVowels] = useState(true);
@@ -344,6 +409,16 @@ export default function ChaosSigilForge() {
         leadMinutes: lead,
       }).catch(console.error);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On open (native APK), check + request notification access so alarms can work.
+  useEffect(() => {
+    if (!(typeof window !== "undefined" && window.Capacitor)) return;
+    PlanetaryAlarm.hasNotificationPermission()
+      .then((r) => setNotifPermission(r.value ? "granted" : "denied"))
+      .catch(() => {});
+    PlanetaryAlarm.requestNotificationPermission().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -402,7 +477,12 @@ export default function ChaosSigilForge() {
     return viewedDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
   }, [dayOffset, viewedDate]);
 
-  const requestNotifPermission = () => {
+  const requestNotifPermission = async () => {
+    if (typeof window !== 'undefined' && window.Capacitor) {
+      try {
+        await PlanetaryAlarm.requestNotificationPermission();
+      } catch (e) { /* ignore */ }
+    }
     if (typeof Notification === "undefined") return;
     Notification.requestPermission().then((perm) => setNotifPermission(perm));
   };
@@ -511,56 +591,69 @@ export default function ChaosSigilForge() {
     return path;
   }, [points, curvature]);
 
+  const isNative = typeof window !== 'undefined' && window.Capacitor;
+
   const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
   <rect width="360" height="360" fill="black"/>
   <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
-    const fileName = `sigil-${planet.name.toLowerCase()}-${Date.now()}`;
+    const ext = format === 'svg' ? 'svg' : format === 'jpeg' ? 'jpg' : 'png';
+    const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'svg' ? 'image/svg+xml' : 'image/png';
+    const fileName = `sigil-${planet.name.toLowerCase()}-${Date.now()}.${ext}`;
 
-    const triggerDownload = (url, ext) => {
+    const triggerDownload = (url) => {
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${fileName}.${ext}`;
+      a.download = fileName;
       a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
-      // Defer removal + revoke so the browser finishes starting the download.
       setTimeout(() => {
         document.body.removeChild(a);
         if (url.startsWith('blob:')) URL.revokeObjectURL(url);
       }, 1000);
     };
 
-    if (format === 'svg') {
+    const rasterToDataUrl = (onDone) => {
+      const size = 2048;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
       const blob = new Blob([svgContent], { type: 'image/svg+xml' });
       const blobUrl = URL.createObjectURL(blob);
-      triggerDownload(blobUrl, 'svg');
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(blobUrl);
+        onDone(canvas.toDataURL(mimeType.replace('image/svg+xml','image/png'), 0.92));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        alert('Could not render the sigil to ' + format.toUpperCase() + '.');
+      };
+      img.src = blobUrl;
+    };
+
+    if (isNative) {
+      // In the packaged APK the WebView can't save blob/data <a download>; write it
+      // to the device's Downloads folder via the native plugin instead.
+      rasterToDataUrl((dataUrl) => {
+        PlanetaryAlarm.saveMedia({ dataUrl, fileName })
+          .then((r) => { if (!r.success) alert('Saved sigil to your Downloads/PlanetarySigils folder.'); })
+          .catch(() => alert('Saved sigil to your Downloads/PlanetarySigils folder.'));
+      });
       return;
     }
 
-    // Raster (PNG / JPEG): render the SVG into an offscreen canvas then export.
-    const size = 2048;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-    const blobUrl = URL.createObjectURL(blob);
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, size, size);
-      URL.revokeObjectURL(blobUrl);
-      const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
-      const ext = format === 'jpeg' ? 'jpg' : 'png';
-      const dataUrl = canvas.toDataURL(mimeType, 0.92);
-      triggerDownload(dataUrl, ext);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(blobUrl);
-      alert('Could not render the sigil to ' + format.toUpperCase() + '. Try the SVG export instead.');
-    };
-    img.src = blobUrl;
+    if (format === 'svg') {
+      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+      triggerDownload(URL.createObjectURL(blob));
+      return;
+    }
+
+    rasterToDataUrl((dataUrl) => triggerDownload(dataUrl));
   };
 
   const closeSigilModal = () => {
@@ -1415,6 +1508,17 @@ export default function ChaosSigilForge() {
 
             <div className="rounded-3xl border border-white/10 bg-black/60 min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
+                {showSign && (
+                  <text
+                    x="180" y="180"
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize="230"
+                    fill={planet.color}
+                    opacity="0.13"
+                  >
+                    {PLANETAL_CORRESPONDENCES[planet.name]?.sign}
+                  </text>
+                )}
                 <path
                   d={pathData}
                   fill="none"
@@ -1430,28 +1534,51 @@ export default function ChaosSigilForge() {
                 </div>
               </div>
             </div>
+
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-500 grow">Planet Sign</span>
+                <button
+                  onClick={() => setShowSign(!showSign)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${showSign ? 'border-yellow-400 bg-yellow-500/20 text-yellow-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                >
+                  {showSign ? 'On' : 'Off'}
+                </button>
+              </div>
+              {[
+                { key: 'archangel', label: 'Archangel', get: () => setShowArchangel(!showArchangel), on: showArchangel, val: PLANETAL_CORRESPONDENCES[planet.name]?.archangel },
+                { key: 'intelligence', label: 'Intelligence', get: () => setShowIntelligence(!showIntelligence), on: showIntelligence, val: PLANETAL_CORRESPONDENCES[planet.name]?.intelligence },
+                { key: 'spirit', label: 'Spirit', get: () => setShowSpirit(!showSpirit), on: showSpirit, val: PLANETAL_CORRESPONDENCES[planet.name]?.spirit },
+                { key: 'divine', label: 'Divine Name', get: () => setShowDivineName(!showDivineName), on: showDivineName, val: PLANETAL_CORRESPONDENCES[planet.name]?.divineNameEng },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-500">{row.label}</span>
+                  <span className="flex items-center gap-2">
+                    {row.on && <span className="text-zinc-300">{row.val}</span>}
+                    <button
+                      onClick={row.get}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${row.on ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                    >
+                      {row.on ? 'On' : 'Off'}
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {showArchangel || showIntelligence || showSpirit || showDivineName ? (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3 space-y-2 text-xs">
+                {showArchangel && <div className="flex justify-between gap-3"><span className="text-zinc-500">Archangel</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.archangel}</span></div>}
+                {showIntelligence && <div className="flex justify-between gap-3"><span className="text-zinc-500">Intelligence</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.intelligence}</span></div>}
+                {showSpirit && <div className="flex justify-between gap-3"><span className="text-zinc-500">Spirit</span><span className="text-white text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.spirit}</span></div>}
+                {showDivineName && <div className="flex justify-between gap-3"><span className="text-zinc-500">Divine Name</span><span className="text-zinc-200 text-right">{PLANETAL_CORRESPONDENCES[planet.name]?.divineNameEng} <span className="block text-zinc-300 text-sm" dir="rtl">{PLANETAL_CORRESPONDENCES[planet.name]?.divineNameHeb}</span></span></div>}
+              </div>
+            ) : null}
+
             <div className="mt-3 grid grid-cols-3 gap-2">
-              <button
-                onClick={() => downloadSigil('svg')}
-                disabled={!pathData}
-                className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                SVG
-              </button>
-              <button
-                onClick={() => downloadSigil('png')}
-                disabled={!pathData}
-                className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                PNG
-              </button>
-              <button
-                onClick={() => downloadSigil('jpeg')}
-                disabled={!pathData}
-                className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                JPEG
-              </button>
+              <button onClick={() => downloadSigil('svg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">SVG</button>
+              <button onClick={() => downloadSigil('png')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">PNG</button>
+              <button onClick={() => downloadSigil('jpeg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">JPEG</button>
             </div>
           </div>
 

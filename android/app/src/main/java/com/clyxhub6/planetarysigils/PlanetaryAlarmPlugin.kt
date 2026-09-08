@@ -4,11 +4,18 @@ import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Permission
 import com.getcapacitor.Plugin
@@ -16,6 +23,8 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.PermissionCallback
+import java.io.File
+import java.io.FileOutputStream
 
 @CapacitorPlugin(
     name = "PlanetaryAlarm",
@@ -74,6 +83,93 @@ class PlanetaryAlarmPlugin : Plugin() {
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun hasNotificationPermission(call: PluginCall) {
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        val ret = JSObject()
+        ret.put("value", granted)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun requestNotificationPermission(call: PluginCall) {
+        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                val activity = activity
+                if (activity != null) {
+                    ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        2002
+                    )
+                }
+            }
+            granted
+        } else {
+            true
+        }
+        val ret = JSObject()
+        ret.put("value", ok)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun saveMedia(call: PluginCall) {
+        val dataUrl = call.getString("dataUrl")
+        val fileName = call.getString("fileName") ?: "sigil.png"
+        if (dataUrl == null) {
+            call.reject("dataUrl required")
+            return
+        }
+
+        val base64 = dataUrl.substringAfter(",")
+        val bytes = Base64.decode(base64, Base64.DEFAULT)
+        val context = context
+        val mime = if (fileName.endsWith("jpg") || fileName.endsWith("jpeg")) "image/jpeg" else "image/png"
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+: save to shared Downloads via MediaStore (no permission needed).
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Download/PlanetarySigils")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    call.reject("Could not create media entry")
+                    return
+                }
+                val os = resolver.openOutputStream(uri)
+                os?.write(bytes)
+                os?.close()
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } else {
+                // Older Android: app-private pictures dir (no permission needed).
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: context.filesDir
+                val file = File(dir, fileName)
+                FileOutputStream(file).use { it.write(bytes) }
+            }
+            val ret = JSObject()
+            ret.put("success", true)
+            call.resolve(ret)
+        } catch (e: Exception) {
+            Log.e("PlanetaryAlarm", "saveMedia failed", e)
+            call.reject("save failed: ${e.message}")
+        }
     }
 
     @PluginMethod

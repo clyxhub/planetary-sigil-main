@@ -19,8 +19,25 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
     },
     async requestExactAlarmPermission() {
       return { value: true }
-    }
-  })
+    },
+    async hasNotificationPermission() {
+      return { value: true }
+    },
+    async requestNotificationPermission() {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        await Notification.requestPermission()
+      }
+      return {
+        value:
+          typeof Notification !== 'undefined' &&
+          Notification.permission === 'granted',
+      }
+    },
+    async saveMedia(_opts) {
+      console.warn('PlanetaryAlarm.saveMedia() called on web — falling back to browser download.')
+      return { success: false }
+    },
+  }),
 })
 
 export { PlanetaryAlarm }
