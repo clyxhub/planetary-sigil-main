@@ -2,19 +2,19 @@ package com.clyxhub6.planetarysigils
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
-import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -34,12 +34,111 @@ import java.io.FileOutputStream
 )
 class PlanetaryAlarmPlugin : Plugin() {
 
+    private var pendingDownloadCall: PluginCall? = null
+    private var pendingDownloadBytes: ByteArray? = null
+    private var pendingDownloadFileName: String? = null
+    private val CREATE_DOCUMENT_REQUEST = 3001
+
+    override fun load() {
+        super.load()
+        createNotificationChannels()
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(NotificationManager::class.java)
+
+            val alarmChannel = NotificationChannel(
+                ALARM_CHANNEL_ID,
+                "Planetary Alarms",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Full-screen alarms for planetary hours"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 1000, 1000)
+                setBypassDnd(true)
+            }
+            manager.createNotificationChannel(alarmChannel)
+
+            val reminderChannel = NotificationChannel(
+                REMINDER_CHANNEL_ID,
+                "Planetary Hour Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Heads-up notification before a planetary hour"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(reminderChannel)
+        }
+    }
+
+    // ── Notification Permission ──────────────────────────────────────────
+
+    @PluginMethod
+    fun hasNotificationPermission(call: PluginCall) {
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else true
+        val ret = JSObject()
+        ret.put("value", granted)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun requestNotificationPermission(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                activity?.let {
+                    ActivityCompat.requestPermissions(
+                        it, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2002
+                    )
+                }
+            }
+            val ret = JSObject()
+            ret.put("value", granted)
+            call.resolve(ret)
+        } else {
+            val ret = JSObject()
+            ret.put("value", true)
+            call.resolve(ret)
+        }
+    }
+
+    // ── Exact Alarm Permission ───────────────────────────────────────────
+
+    @PluginMethod
+    fun hasExactAlarmPermission(call: PluginCall) {
+        val ret = JSObject()
+        val ok = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            alarmManager().canScheduleExactAlarms()
+        ret.put("value", ok)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun requestExactAlarmPermission(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !alarmManager().canScheduleExactAlarms()
+        ) {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
+        val ret = JSObject()
+        ret.put("value", true)
+        call.resolve(ret)
+    }
+
+    // ── Schedule / Cancel ────────────────────────────────────────────────
+
     @PluginMethod
     fun schedule(call: PluginCall) {
-        // The alarm ring is NOT gated on the notification permission: it always
-        // gets scheduled, and rings even if the user declined POST_NOTIFICATIONS.
-        // (POST_NOTIFICATIONS only controls whether the reminder/notification is
-        // visible, not whether the exact alarm fires.)
         val timestamp = call.getLong("timestamp")?.toLong()
             ?: call.getString("timestamp")?.toLongOrNull()
         val planetName = call.getString("planetName")
@@ -61,71 +160,94 @@ class PlanetaryAlarmPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun hasNotificationPermission(call: PluginCall) {
-        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+    fun cancel(call: PluginCall) {
+        val timestamp = call.getLong("timestamp")?.toLong()
+            ?: call.getString("timestamp")?.toLongOrNull() ?: return
+
+        val am = alarmManager()
+
+        // Cancel alarm
+        val alarmPi = PendingIntent.getBroadcast(
+            context, timestamp.toInt(),
+            Intent(context, AlarmReceiver::class.java).apply {
+                putExtra("timestamp", timestamp)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        am.cancel(alarmPi)
+
+        // Cancel reminder (requestCode = timestamp+1 to avoid collision)
+        val reminderPi = PendingIntent.getBroadcast(
+            context, timestamp.toInt() + 1,
+            Intent(context, ReminderReceiver::class.java).apply {
+                action = REMINDER_ACTION
+                putExtra("timestamp", timestamp)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        am.cancel(reminderPi)
+
+        // Dismiss any posted notification
+        context.getSystemService(NotificationManager::class.java)
+            .cancel(timestamp.toInt())
+
         val ret = JSObject()
-        ret.put("value", granted)
+        ret.put("success", true)
         call.resolve(ret)
     }
 
-    @PluginMethod
-    fun requestNotificationPermission(call: PluginCall) {
-        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                val activity = activity
-                if (activity != null) {
-                    ActivityCompat.requestPermissions(
-                        activity,
-                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                        2002
-                    )
-                }
+    private fun scheduleAlarm(timestamp: Long, planetName: String) {
+        val pi = PendingIntent.getBroadcast(
+            context, timestamp.toInt(),
+            Intent(context, AlarmReceiver::class.java).apply {
+                putExtra("planetName", planetName)
+                putExtra("timestamp", timestamp)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager().setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timestamp, pi)
+            } else {
+                alarmManager().setExact(AlarmManager.RTC_WAKEUP, timestamp, pi)
             }
-            granted
-        } else {
-            true
+            Log.d(TAG, "Alarm scheduled: $planetName @ $timestamp")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Exact alarm denied, falling back to inexact", e)
+            alarmManager().set(AlarmManager.RTC_WAKEUP, timestamp, pi)
         }
-        val ret = JSObject()
-        ret.put("value", ok)
-        call.resolve(ret)
     }
 
-    @PluginMethod
-    fun saveMedia(call: PluginCall) {
-        val dataUrl = call.getString("dataUrl")
-        val fileName = call.getString("fileName") ?: "sigil.png"
-        if (dataUrl == null) {
-            call.reject("dataUrl required")
-            return
+    private fun scheduleReminder(timestamp: Long, planetName: String, leadMinutes: Long) {
+        val reminderTime = timestamp - leadMinutes * 60_000
+        if (reminderTime <= System.currentTimeMillis()) return
+
+        // Use requestCode = timestamp+1 so it never collides with the alarm PI
+        val pi = PendingIntent.getBroadcast(
+            context, timestamp.toInt() + 1,
+            Intent(context, ReminderReceiver::class.java).apply {
+                action = REMINDER_ACTION
+                putExtra("planetName", planetName)
+                putExtra("timestamp", timestamp)
+                putExtra("leadMinutes", leadMinutes)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager().setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderTime, pi)
+            } else {
+                alarmManager().setExact(AlarmManager.RTC_WAKEUP, reminderTime, pi)
+            }
+            Log.d(TAG, "Reminder scheduled: $planetName ${leadMinutes}m before @ $reminderTime")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Exact alarm denied for reminder, using inexact", e)
+            alarmManager().set(AlarmManager.RTC_WAKEUP, reminderTime, pi)
         }
-        val base64 = dataUrl.substringAfter(",")
-        val bytes = Base64.decode(base64, Base64.DEFAULT)
-        val mime = if (fileName.endsWith("jpg") || fileName.endsWith("jpeg")) "image/jpeg" else "image/png"
-        writeOut(bytes, fileName, mime, call)
     }
 
-    @PluginMethod
-    fun saveSvg(call: PluginCall) {
-        val svg = call.getString("svg")
-        val fileName = call.getString("fileName") ?: "sigil.svg"
-        if (svg == null) {
-            call.reject("svg required")
-            return
-        }
-        val bytes = svg.toByteArray()
-        writeOut(bytes, fileName, "image/svg+xml", call)
-    }
+    // ── Download: System Save Dialog ─────────────────────────────────────
 
-    // Launch the Android system "Save to" dialog (ACTION_CREATE_DOCUMENT). The
-    // system provides the picker UI, so saving works on every Android version with
-    // zero permissions. The chosen location URI is written in onActivityResult.
     @PluginMethod
     fun openFileWithSystemUI(call: PluginCall) {
         val dataUrl = call.getString("dataUrl")
@@ -135,13 +257,17 @@ class PlanetaryAlarmPlugin : Plugin() {
             call.reject("dataUrl or svg required")
             return
         }
+
         val mime = when {
             fileName.endsWith("svg", true) -> "image/svg+xml"
             fileName.endsWith("jpg", true) || fileName.endsWith("jpeg", true) -> "image/jpeg"
             else -> "image/png"
         }
-        val bytes = if (svg != null) svg.toByteArray() else {
-            Base64.decode(dataUrl!!.substringAfter(","), Base64.DEFAULT)
+        val bytes = if (svg != null) {
+            svg.toByteArray(Charsets.UTF_8)
+        } else {
+            val raw = dataUrl!!.substringAfter(",")
+            Base64.decode(raw, Base64.DEFAULT)
         }
         if (bytes.isEmpty()) {
             call.reject("Could not decode data")
@@ -150,19 +276,24 @@ class PlanetaryAlarmPlugin : Plugin() {
 
         pendingDownloadCall = call
         pendingDownloadBytes = bytes
+        pendingDownloadFileName = fileName
 
         try {
             val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = mime
                 putExtra(Intent.EXTRA_TITLE, fileName)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
             }
             startActivityForResult(call, intent, CREATE_DOCUMENT_REQUEST)
         } catch (e: Exception) {
-            Log.e("PlanetaryAlarm", "openFileWithSystemUI launch failed", e)
+            Log.e(TAG, "Failed to launch save dialog", e)
             pendingDownloadCall = null
             pendingDownloadBytes = null
+            pendingDownloadFileName = null
             call.reject(e.message ?: "Could not open save dialog")
         }
     }
@@ -170,18 +301,24 @@ class PlanetaryAlarmPlugin : Plugin() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != CREATE_DOCUMENT_REQUEST) return
+
         val call = pendingDownloadCall
+        val bytes = pendingDownloadBytes
         pendingDownloadCall = null
-        val bytes = pendingDownloadBytes ?: ByteArray(0)
         pendingDownloadBytes = null
-        if (call == null) return
+        pendingDownloadFileName = null
+        if (call == null || bytes == null) return
 
         if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
             try {
-                context.contentResolver.openOutputStream(data.data, "w")?.use { it.write(bytes) }
-                call.resolve()
+                context.contentResolver.openOutputStream(data.data, "w")?.use { os ->
+                    os.write(bytes)
+                }
+                val ret = JSObject()
+                ret.put("success", true)
+                call.resolve(ret)
             } catch (e: Exception) {
-                Log.e("PlanetaryAlarm", "Writing to chosen destination failed", e)
+                Log.e(TAG, "Writing to chosen location failed", e)
                 call.reject(e.message ?: "Could not write to the chosen location")
             }
         } else {
@@ -189,213 +326,64 @@ class PlanetaryAlarmPlugin : Plugin() {
         }
     }
 
-    private var pendingDownloadCall: PluginCall? = null
-    private var pendingDownloadBytes: ByteArray? = null
-
-    private val CREATE_DOCUMENT_REQUEST = 3001
-
-    // Resilient save: tries MediaStore Downloads (shared, discoverable), then an
-    // app-external directory as a fallback. Only rejects if nothing could be written.
-    private fun writeOut(bytes: ByteArray, fileName: String, mime: String, call: PluginCall) {
-        val context = context
-        var wrote = false
-        var where = "Downloads/PlanetarySigils"
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val resolver = context.contentResolver
-                // Strategy A: MediaStore Downloads with a friendly subfolder.
-                for (relPath in listOf("Download/PlanetarySigils", "Download")) {
-                    try {
-                        val values = ContentValues().apply {
-                            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                            put(MediaStore.Downloads.MIME_TYPE, mime)
-                            put(MediaStore.Downloads.RELATIVE_PATH, relPath)
-                            put(MediaStore.Downloads.IS_PENDING, 1)
-                        }
-                        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                        if (uri != null) {
-                            val os = resolver.openOutputStream(uri)
-                            os?.write(bytes)
-                            os?.close()
-                            values.clear()
-                            values.put(MediaStore.Downloads.IS_PENDING, 0)
-                            resolver.update(uri, values, null, null)
-                            wrote = true
-                            where = if (relPath.contains("PlanetarySigils")) "Downloads/PlanetarySigils" else "Downloads"
-                            break
-                        }
-                    } catch (e: Exception) {
-                        Log.w("PlanetaryAlarm", "MediaStore save to '$relPath' failed", e)
-                    }
-                }
-            }
-
-            // Strategy B: app-external files dir (no permission needed) + index it.
-            if (!wrote) {
-                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-                val file = File(dir, fileName)
-                try {
-                    file.writeBytes(bytes)
-                    try {
-                        android.media.MediaScannerConnection.scanFile(
-                            context, arrayOf(file.absolutePath), arrayOf(mime), null
-                        )
-                    } catch (se: Exception) { Log.w("PlanetaryAlarm", "scan failed", se) }
-                    wrote = true
-                    where = "app files/Downloads"
-                } catch (e: Exception) {
-                    Log.e("PlanetaryAlarm", "App-dir save failed", e)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("PlanetaryAlarm", "writeOut failed", e)
-        }
-
-        val ret = JSObject()
-        if (wrote) {
-            ret.put("success", true)
-            ret.put("where", where)
-            call.resolve(ret)
-        } else {
-            call.reject("Could not write the file")
-        }
-    }
+    // ── Download: Silent Fallback (always works, no UI) ──────────────────
 
     @PluginMethod
-    fun cancel(call: PluginCall) {
-        val timestamp = call.getLong("timestamp")?.toLong()
-            ?: call.getString("timestamp")?.toLongOrNull()
-
-        if (timestamp == null) {
-            call.reject("Must provide timestamp")
+    fun silentSave(call: PluginCall) {
+        val dataUrl = call.getString("dataUrl")
+        val svg = call.getString("svg")
+        val fileName = call.getString("fileName") ?: "sigil.png"
+        if (dataUrl == null && svg == null) {
+            call.reject("dataUrl or svg required")
             return
         }
 
-        val context = context
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        // Cancel the ringing alarm
-        val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
-            putExtra("planetName", "")
-            putExtra("timestamp", timestamp)
+        val mime = when {
+            fileName.endsWith("svg", true) -> "image/svg+xml"
+            fileName.endsWith("jpg", true) || fileName.endsWith("jpeg", true) -> "image/jpeg"
+            else -> "image/png"
         }
-        val alarmPi = PendingIntent.getBroadcast(
-            context,
-            timestamp.toInt(),
-            alarmIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(alarmPi)
-
-        // Cancel any scheduled reminder notification
-        val reminderIntent = Intent(context, ReminderReceiver::class.java).apply {
-            action = Constants.REMINDER_ACTION
-            putExtra("timestamp", timestamp)
+        val bytes = if (svg != null) {
+            svg.toByteArray(Charsets.UTF_8)
+        } else {
+            val raw = dataUrl!!.substringAfter(",")
+            Base64.decode(raw, Base64.DEFAULT)
         }
-        val reminderPi = PendingIntent.getBroadcast(
-            context,
-            timestamp.toInt(),
-            reminderIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(reminderPi)
-
-        // Dismiss any already-posted notification for this hour
-        val notificationManager = context.getSystemService(NotificationManager::class.java)
-        notificationManager.cancel(timestamp.toInt())
-
-        val ret = JSObject()
-        ret.put("success", true)
-        call.resolve(ret)
-    }
-
-    @PluginMethod
-    fun hasExactAlarmPermission(call: PluginCall) {
-        val ret = JSObject()
-        ret.put("value", Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager().canScheduleExactAlarms())
-        call.resolve(ret)
-    }
-
-    @PluginMethod
-    fun requestExactAlarmPermission(call: PluginCall) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager().canScheduleExactAlarms()) {
-            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                data = android.net.Uri.parse("package:${context.packageName}")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
+        if (bytes.isEmpty()) {
+            call.reject("Could not decode data")
+            return
         }
-        call.resolve()
-    }
-
-    private fun alarmManager() = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-    private fun scheduleAlarm(timestamp: Long, planetName: String) {
-        val context = context
-        val alarmManager = alarmManager()
-
-        val intent = Intent(context, AlarmReceiver::class.java).apply {
-            putExtra("planetName", planetName)
-            putExtra("timestamp", timestamp)
-        }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            timestamp.toInt(), 
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
-            } else {
-                alarmManager.setExact(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
-            }
-            Log.d("PlanetaryAlarm", "Scheduled exact alarm for $planetName at $timestamp")
-        } catch (e: SecurityException) {
-            Log.e("PlanetaryAlarm", "Exact alarm permission missing", e)
-            // Fallback for Android 14+ if permission is denied
-            alarmManager.set(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: context.filesDir
+            val file = File(dir, fileName)
+            FileOutputStream(file).use { it.write(bytes) }
+
+            android.media.MediaScannerConnection.scanFile(
+                context, arrayOf(file.absolutePath), arrayOf(mime), null
+            )
+
+            val ret = JSObject()
+            ret.put("success", true)
+            ret.put("path", file.absolutePath)
+            call.resolve(ret)
+            Log.d(TAG, "Silent save: ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Silent save failed", e)
+            call.reject(e.message ?: "Could not save file")
         }
     }
 
-    private fun scheduleReminder(timestamp: Long, planetName: String, leadMinutes: Long) {
-        val reminderTime = timestamp - (leadMinutes * 60 * 1000)
-        if (reminderTime <= System.currentTimeMillis()) return // already passed
+    // ── Helpers ──────────────────────────────────────────────────────────
 
-        val context = context
-        val alarmManager = alarmManager()
+    private fun alarmManager() =
+        context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        val intent = Intent(context, ReminderReceiver::class.java).apply {
-            action = Constants.REMINDER_ACTION
-            putExtra("planetName", planetName)
-            putExtra("timestamp", timestamp)
-            putExtra("leadMinutes", leadMinutes)
-        }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            timestamp.toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderTime, pendingIntent)
-            } else {
-                alarmManager.setExact(AlarmManager.RTC_WAKEUP, reminderTime, pendingIntent)
-            }
-            Log.d("PlanetaryAlarm", "Scheduled reminder for $planetName ${leadMinutes}min before $timestamp")
-        } catch (e: SecurityException) {
-            alarmManager.set(AlarmManager.RTC_WAKEUP, reminderTime, pendingIntent)
-        }
+    companion object {
+        private const val TAG = "PlanetaryAlarm"
+        const val ALARM_CHANNEL_ID = "planetary_alarm_channel"
+        const val REMINDER_CHANNEL_ID = "planetary_reminder_channel"
+        const val REMINDER_ACTION = "com.clyxhub6.planetarysigils.REMINDER"
     }
-}
-
-object Constants {
-    const val REMINDER_ACTION = "com.clyxhub6.planetarysigils.REMINDER"
-    const val REMINDER_CHANNEL_ID = "planetary_reminder_channel"
 }

@@ -611,6 +611,41 @@ export default function ChaosSigilForge() {
 
   const isNative = typeof window !== 'undefined' && window.Capacitor;
 
+  // ── Native download: try system save dialog, then silent fallback ─────
+  const nativeDownload = (dataUrl, svg, fileName) => {
+    // 1st: system save dialog (user picks where)
+    PlanetaryAlarm.openFileWithSystemUI({ dataUrl, svg, fileName })
+      .then((r) => {
+        if (r.success) {
+          alert('Saved to the location you chose.');
+        } else {
+          // 2nd: silent save (always works, writes to app dir)
+          return PlanetaryAlarm.silentSave({ dataUrl, svg, fileName })
+            .then((r2) => {
+              if (r2.success) {
+                alert('Saved to your device. Check your Downloads folder.');
+              } else {
+                alert('Could not save the file.');
+              }
+            });
+        }
+      })
+      .catch(() => {
+        // System dialog cancelled or failed — fall back to silent save
+        return PlanetaryAlarm.silentSave({ dataUrl, svg, fileName })
+          .then((r2) => {
+            if (r2.success) {
+              alert('Saved to your device. Check your Downloads folder.');
+            } else {
+              alert('Could not save the file.');
+            }
+          })
+          .catch((err2) => {
+            alert('Could not save the file: ' + (err2?.message || 'unknown error'));
+          });
+      });
+  };
+
   const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
   <rect width="360" height="360" fill="black"/>
@@ -654,32 +689,24 @@ export default function ChaosSigilForge() {
     };
 
     if (isNative) {
-      // Packaged APK: the WebView can't save blob/<a download>. Instead we write to
-      // app cache (works on EVERY Android version, no permissions) and open the
-      // Android system file/share sheet, where the user picks where to save.
-      const fail = (info) => alert('Could not open the file to save it. ' + info);
-      const viaSystemUI = (dataUrl, svg) =>
-        PlanetaryAlarm.openFileWithSystemUI({ dataUrl, svg, fileName })
-          .then((r) => (r.success ? null : fail(format.toUpperCase())))
-          .catch((err) => fail(err && err.message ? err.message : format.toUpperCase()));
       if (format === 'svg') {
-        viaSystemUI(null, svgContent);
+        nativeDownload(null, svgContent, fileName);
         return;
       }
-      rasterToDataUrl((dataUrl) => viaSystemUI(dataUrl, null));
+      rasterToDataUrl((dataUrl) => nativeDownload(dataUrl, null, fileName));
       return;
     }
 
+    // Browser fallback: <a download>
     if (format === 'svg') {
       const blob = new Blob([svgContent], { type: 'image/svg+xml' });
       triggerDownload(URL.createObjectURL(blob));
       return;
     }
-
     rasterToDataUrl((dataUrl) => triggerDownload(dataUrl));
   };
 
-  // Fast on-device check that saving works, without generating a full sigil.
+  // ── Quick on-device download test (no sigil generation needed) ────────
   const testDownload = () => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"><rect width="360" height="360" fill="black"/><circle cx="180" cy="180" r="120" fill="none" stroke="${planet.color}" stroke-width="12"/></svg>`;
     const fileName = `sigil-test-${Date.now()}.png`;
@@ -689,16 +716,12 @@ export default function ChaosSigilForge() {
       canvas.height = 512;
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
       img.onload = () => {
         ctx.drawImage(img, 0, 0, 512, 512);
-        const dataUrl = canvas.toDataURL('image/png', 0.92);
-        PlanetaryAlarm.openFileWithSystemUI({ dataUrl, fileName, svg: null })
-          .then((r) => (r.success ? alert('Sigil saved to the location you chose.') : alert('Could not save the test image.')))
-          .catch((err) => alert(err && err.message ? err.message : 'Could not save the test image.'));
+        nativeDownload(canvas.toDataURL('image/png', 0.92), null, fileName);
       };
       img.onerror = () => alert('Could not render the test image.');
-      img.src = dataUri;
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
       return;
     }
     const blob = new Blob([svgContent], { type: 'image/svg+xml' });
