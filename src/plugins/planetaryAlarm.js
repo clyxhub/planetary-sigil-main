@@ -41,6 +41,10 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
       console.warn('PlanetaryAlarm.saveSvg() called on web — falling back to browser download.')
       return { success: false }
     },
+    async openFileWithSystemUI(_opts) {
+      console.warn('PlanetaryAlarm.openFileWithSystemUI() called on web — falling back to browser download.')
+      return { success: false }
+    },
   }),
 })
 

@@ -654,21 +654,19 @@ export default function ChaosSigilForge() {
     };
 
     if (isNative) {
-      // In the packaged APK the WebView can't save blob/data <a download>; write it
-      // to the device's Downloads folder via the native plugin instead.
-      const done = () => alert('Saved to your Downloads/PlanetarySigils folder.');
-      const fail = (label) => alert('Could not save the ' + label + '. Check Downloads/PlanetarySigils or try another format.');
+      // Packaged APK: the WebView can't save blob/<a download>. Instead we write to
+      // app cache (works on EVERY Android version, no permissions) and open the
+      // Android system file/share sheet, where the user picks where to save.
+      const fail = (info) => alert('Could not open the file to save it. ' + info);
+      const viaSystemUI = (dataUrl, svg) =>
+        PlanetaryAlarm.openFileWithSystemUI({ dataUrl, svg, fileName })
+          .then((r) => (r.success ? null : fail(format.toUpperCase())))
+          .catch(() => fail(format.toUpperCase()));
       if (format === 'svg') {
-        PlanetaryAlarm.saveSvg({ svg: svgContent, fileName })
-          .then((r) => (r.success ? done() : fail('SVG')))
-          .catch(() => fail('SVG'));
+        viaSystemUI(null, svgContent);
         return;
       }
-      rasterToDataUrl((dataUrl) => {
-        PlanetaryAlarm.saveMedia({ dataUrl, fileName })
-          .then((r) => (r.success ? done() : fail(format.toUpperCase())))
-          .catch(() => fail(format.toUpperCase()));
-      });
+      rasterToDataUrl((dataUrl) => viaSystemUI(dataUrl, null));
       return;
     }
 
@@ -679,6 +677,36 @@ export default function ChaosSigilForge() {
     }
 
     rasterToDataUrl((dataUrl) => triggerDownload(dataUrl));
+  };
+
+  // Fast on-device check that saving works, without generating a full sigil.
+  const testDownload = () => {
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"><rect width="360" height="360" fill="black"/><circle cx="180" cy="180" r="120" fill="none" stroke="${planet.color}" stroke-width="12"/></svg>`;
+    const fileName = `sigil-test-${Date.now()}.png`;
+    if (isNative) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, 512, 512);
+        const dataUrl = canvas.toDataURL('image/png', 0.92);
+        PlanetaryAlarm.openFileWithSystemUI({ dataUrl, fileName, svg: null })
+          .then((r) => (r.success ? alert('Opened the test image — tap a save option in the system sheet to confirm it saves.') : alert('Could not open the test image.')))
+          .catch(() => alert('Could not open the test image.'));
+      };
+      img.onerror = () => alert('Could not render the test image.');
+      img.src = dataUri;
+      return;
+    }
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
   const closeSigilModal = () => {
@@ -1667,6 +1695,14 @@ export default function ChaosSigilForge() {
               <button onClick={() => downloadSigil('svg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">SVG</button>
               <button onClick={() => downloadSigil('png')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">PNG</button>
               <button onClick={() => downloadSigil('jpeg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">JPEG</button>
+            </div>
+            <div className="mt-2">
+              <button
+                onClick={testDownload}
+                className="w-full rounded-2xl py-3 border border-dashed border-emerald-400/40 bg-emerald-500/10 text-emerald-100 text-xs font-bold hover:bg-emerald-500/20 transition-all duration-300"
+              >
+                Test download on this device
+              </button>
             </div>
           </div>
 

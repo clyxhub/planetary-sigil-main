@@ -123,6 +123,59 @@ class PlanetaryAlarmPlugin : Plugin() {
         writeOut(bytes, fileName, "image/svg+xml", call)
     }
 
+    // Write the file to the app's cache dir (works on ANY Android version, zero
+    // permissions) and open the Android system file/share sheet via FileProvider.
+    // The user picks their Downloads app / file manager and the system saves it.
+    @PluginMethod
+    fun openFileWithSystemUI(call: PluginCall) {
+        val dataUrl = call.getString("dataUrl")
+        val svg = call.getString("svg")
+        val fileName = call.getString("fileName") ?: "sigil.png"
+        if (dataUrl == null && svg == null) {
+            call.reject("dataUrl or svg required")
+            return
+        }
+        val mime = when {
+            fileName.endsWith("svg", true) -> "image/svg+xml"
+            fileName.endsWith("jpg", true) || fileName.endsWith("jpeg", true) -> "image/jpeg"
+            else -> "image/png"
+        }
+        val bytes = if (svg != null) svg.toByteArray() else {
+            Base64.decode(dataUrl.substringAfter(","), Base64.DEFAULT)
+        }
+        if (bytes.isEmpty()) {
+            call.reject("Could not decode data")
+            return
+        }
+
+        try {
+            val dir = context.cacheDir
+            val file = File(dir, fileName)
+            FileOutputStream(file).use { it.write(bytes) }
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+
+            val ret = JSObject()
+            ret.put("success", true)
+            ret.put("where", "system")
+            call.resolve(ret)
+        } catch (e: Exception) {
+            Log.e("PlanetaryAlarm", "openFileWithSystemUI failed", e)
+            call.reject(e.message ?: "Could not open file")
+        }
+    }
+
     // Resilient save: tries MediaStore Downloads (shared, discoverable), then an
     // app-external directory as a fallback. Only rejects if nothing could be written.
     private fun writeOut(bytes: ByteArray, fileName: String, mime: String, call: PluginCall) {
