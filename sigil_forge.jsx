@@ -619,18 +619,15 @@ export default function ChaosSigilForge() {
       canvas.height = size;
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-      const blobUrl = URL.createObjectURL(blob);
+      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
       img.onload = () => {
         ctx.drawImage(img, 0, 0, size, size);
-        URL.revokeObjectURL(blobUrl);
         onDone(canvas.toDataURL(mimeType.replace('image/svg+xml','image/png'), 0.92));
       };
       img.onerror = () => {
-        URL.revokeObjectURL(blobUrl);
-        alert('Could not render the sigil to ' + format.toUpperCase() + '.');
+        alert('Could not render the sigil to ' + format.toUpperCase() + '. Try the SVG export instead.');
       };
-      img.src = blobUrl;
+      img.src = dataUri;
     };
 
     if (isNative) {
@@ -1676,7 +1673,13 @@ export default function ChaosSigilForge() {
                   </svg>
 
                   {modalChooserOpen && (
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-black/90 border border-white/10 backdrop-blur-md rounded-2xl p-2">
+                    <div
+                      className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-black/90 border border-white/10 backdrop-blur-md rounded-2xl p-2"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onPointerMove={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         onClick={() => downloadSigil('svg')}
                         className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
