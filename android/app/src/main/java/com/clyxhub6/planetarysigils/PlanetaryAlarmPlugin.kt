@@ -20,6 +20,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
@@ -37,7 +38,6 @@ class PlanetaryAlarmPlugin : Plugin() {
     private var pendingDownloadCall: PluginCall? = null
     private var pendingDownloadBytes: ByteArray? = null
     private var pendingDownloadFileName: String? = null
-    private val CREATE_DOCUMENT_REQUEST = 3001
 
     override fun load() {
         super.load()
@@ -288,7 +288,7 @@ class PlanetaryAlarmPlugin : Plugin() {
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             }
-            startActivityForResult(call, intent, CREATE_DOCUMENT_REQUEST)
+            startActivityForResult(call, intent, "onSaveResult")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch save dialog", e)
             pendingDownloadCall = null
@@ -298,20 +298,17 @@ class PlanetaryAlarmPlugin : Plugin() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != CREATE_DOCUMENT_REQUEST) return
-
-        val call = pendingDownloadCall
+    @ActivityCallback
+    fun onSaveResult(call: PluginCall, result: android.app.ActivityResult) {
         val bytes = pendingDownloadBytes
         pendingDownloadCall = null
         pendingDownloadBytes = null
         pendingDownloadFileName = null
-        if (call == null || bytes == null) return
 
-        if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
+        val uri = result.data?.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && uri != null && bytes != null) {
             try {
-                context.contentResolver.openOutputStream(data.data, "w")?.use { os ->
+                context.contentResolver.openOutputStream(uri, "w")?.use { os ->
                     os.write(bytes)
                 }
                 val ret = JSObject()
