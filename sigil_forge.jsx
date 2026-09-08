@@ -661,7 +661,7 @@ export default function ChaosSigilForge() {
       const viaSystemUI = (dataUrl, svg) =>
         PlanetaryAlarm.openFileWithSystemUI({ dataUrl, svg, fileName })
           .then((r) => (r.success ? null : fail(format.toUpperCase())))
-          .catch(() => fail(format.toUpperCase()));
+          .catch((err) => fail(err && err.message ? err.message : format.toUpperCase()));
       if (format === 'svg') {
         viaSystemUI(null, svgContent);
         return;
@@ -694,8 +694,8 @@ export default function ChaosSigilForge() {
         ctx.drawImage(img, 0, 0, 512, 512);
         const dataUrl = canvas.toDataURL('image/png', 0.92);
         PlanetaryAlarm.openFileWithSystemUI({ dataUrl, fileName, svg: null })
-          .then((r) => (r.success ? alert('Opened the test image — tap a save option in the system sheet to confirm it saves.') : alert('Could not open the test image.')))
-          .catch(() => alert('Could not open the test image.'));
+          .then((r) => (r.success ? alert('Sigil saved to the location you chose.') : alert('Could not save the test image.')))
+          .catch((err) => alert(err && err.message ? err.message : 'Could not save the test image.'));
       };
       img.onerror = () => alert('Could not render the test image.');
       img.src = dataUri;

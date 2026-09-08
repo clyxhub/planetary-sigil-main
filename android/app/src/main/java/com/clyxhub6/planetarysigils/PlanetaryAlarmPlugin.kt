@@ -123,9 +123,9 @@ class PlanetaryAlarmPlugin : Plugin() {
         writeOut(bytes, fileName, "image/svg+xml", call)
     }
 
-    // Write the file to the app's cache dir (works on ANY Android version, zero
-    // permissions) and open the Android system file/share sheet via FileProvider.
-    // The user picks their Downloads app / file manager and the system saves it.
+    // Launch the Android system "Save to" dialog (ACTION_CREATE_DOCUMENT). The
+    // system provides the picker UI, so saving works on every Android version with
+    // zero permissions. The chosen location URI is written in onActivityResult.
     @PluginMethod
     fun openFileWithSystemUI(call: PluginCall) {
         val dataUrl = call.getString("dataUrl")
@@ -148,33 +148,51 @@ class PlanetaryAlarmPlugin : Plugin() {
             return
         }
 
+        pendingDownloadCall = call
+        pendingDownloadBytes = bytes
+
         try {
-            val dir = context.cacheDir
-            val file = File(dir, fileName)
-            FileOutputStream(file).use { it.write(bytes) }
-
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mime)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = mime
+                putExtra(Intent.EXTRA_TITLE, fileName)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
-            context.startActivity(intent)
-
-            val ret = JSObject()
-            ret.put("success", true)
-            ret.put("where", "system")
-            call.resolve(ret)
+            startActivityForResult(call, intent, CREATE_DOCUMENT_REQUEST)
         } catch (e: Exception) {
-            Log.e("PlanetaryAlarm", "openFileWithSystemUI failed", e)
-            call.reject(e.message ?: "Could not open file")
+            Log.e("PlanetaryAlarm", "openFileWithSystemUI launch failed", e)
+            pendingDownloadCall = null
+            pendingDownloadBytes = null
+            call.reject(e.message ?: "Could not open save dialog")
         }
     }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != CREATE_DOCUMENT_REQUEST) return
+        val call = pendingDownloadCall
+        pendingDownloadCall = null
+        val bytes = pendingDownloadBytes ?: ByteArray(0)
+        pendingDownloadBytes = null
+        if (call == null) return
+
+        if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
+            try {
+                context.contentResolver.openOutputStream(data.data, "w")?.use { it.write(bytes) }
+                call.resolve()
+            } catch (e: Exception) {
+                Log.e("PlanetaryAlarm", "Writing to chosen destination failed", e)
+                call.reject(e.message ?: "Could not write to the chosen location")
+            }
+        } else {
+            call.reject("Save cancelled")
+        }
+    }
+
+    private var pendingDownloadCall: PluginCall? = null
+    private var pendingDownloadBytes: ByteArray? = null
+
+    private val CREATE_DOCUMENT_REQUEST = 3001
 
     // Resilient save: tries MediaStore Downloads (shared, discoverable), then an
     // app-external directory as a fallback. Only rejects if nothing could be written.
