@@ -1,5 +1,6 @@
 package com.clyxhub6.planetarysigils
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,20 +10,31 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import com.getcapacitor.JSObject
+import com.getcapacitor.Permission
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.PermissionCallback
 
-@CapacitorPlugin(name = "PlanetaryAlarm")
+@CapacitorPlugin(
+    name = "PlanetaryAlarm",
+    permissions = [
+        Permission(alias = "notifications", strings = [Manifest.permission.POST_NOTIFICATIONS])
+    ]
+)
 class PlanetaryAlarmPlugin : Plugin() {
 
+    private var pendingStamp: Long = 0L
+    private var pendingPlanet: String? = null
+    private var pendingLead: Long = 0L
+
     @PluginMethod
+    @Permission(alias = "notifications")
     fun schedule(call: PluginCall) {
         // Capacitor may pass a number or a string. We expect a long timestamp.
-        val timestamp = call.getLong("timestamp")?.toLong() 
+        val timestamp = call.getLong("timestamp")?.toLong()
             ?: call.getString("timestamp")?.toLongOrNull()
-        
         val planetName = call.getString("planetName")
         val leadMinutes = call.getInt("leadMinutes") ?: 0
 
@@ -31,12 +43,34 @@ class PlanetaryAlarmPlugin : Plugin() {
             return
         }
 
-        scheduleAlarm(timestamp, planetName)
+        // Stash args; the actual scheduling happens in the permission callback so that
+        // on Android 13+ we first ask for POST_NOTIFICATIONS.
+        pendingStamp = timestamp
+        pendingPlanet = planetName
+        pendingLead = leadMinutes.toLong()
 
-        if (leadMinutes > 0) {
-            scheduleReminder(timestamp, planetName, leadMinutes.toLong())
+        // If permission is already granted, @Permission runs the method body and then
+        // immediately invokes the callback; if not, it prompts first.
+    }
+
+    @PermissionCallback
+    fun schedulePermissionCallback(call: PluginCall) {
+        val planetName = pendingPlanet
+        val timestamp = pendingStamp
+        if (planetName == null || timestamp == 0L) {
+            call.reject("Missing schedule arguments")
+            return
         }
-        
+
+        scheduleAlarm(timestamp, planetName)
+        if (pendingLead > 0) {
+            scheduleReminder(timestamp, planetName, pendingLead)
+        }
+
+        pendingPlanet = null
+        pendingStamp = 0L
+        pendingLead = 0L
+
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
