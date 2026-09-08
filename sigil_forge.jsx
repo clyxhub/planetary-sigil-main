@@ -633,10 +633,18 @@ export default function ChaosSigilForge() {
     if (isNative) {
       // In the packaged APK the WebView can't save blob/data <a download>; write it
       // to the device's Downloads folder via the native plugin instead.
+      const done = () => alert('Saved to your Downloads/PlanetarySigils folder.');
+      const fail = (label) => alert('Could not save the ' + label + '. Check Downloads/PlanetarySigils or try another format.');
+      if (format === 'svg') {
+        PlanetaryAlarm.saveSvg({ svg: svgContent, fileName })
+          .then((r) => (r.success ? done() : fail('SVG')))
+          .catch(() => fail('SVG'));
+        return;
+      }
       rasterToDataUrl((dataUrl) => {
         PlanetaryAlarm.saveMedia({ dataUrl, fileName })
-          .then((r) => { if (!r.success) alert('Saved sigil to your Downloads/PlanetarySigils folder.'); })
-          .catch(() => alert('Saved sigil to your Downloads/PlanetarySigils folder.'));
+          .then((r) => (r.success ? done() : fail(format.toUpperCase())))
+          .catch(() => fail(format.toUpperCase()));
       });
       return;
     }

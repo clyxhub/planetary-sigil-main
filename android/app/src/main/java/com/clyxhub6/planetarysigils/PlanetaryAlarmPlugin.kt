@@ -148,6 +148,49 @@ class PlanetaryAlarmPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun saveSvg(call: PluginCall) {
+        val svg = call.getString("svg")
+        val fileName = call.getString("fileName") ?: "sigil.svg"
+        if (svg == null) {
+            call.reject("svg required")
+            return
+        }
+
+        val bytes = svg.toByteArray()
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "image/svg+xml")
+                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/PlanetarySigils")
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    call.reject("Could not create download entry")
+                    return
+                }
+                val os = context.contentResolver.openOutputStream(uri)
+                os?.write(bytes)
+                os?.close()
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+            } else {
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: context.filesDir
+                File(dir, fileName).writeBytes(bytes)
+            }
+            val ret = JSObject()
+            ret.put("success", true)
+            call.resolve(ret)
+        } catch (e: Exception) {
+            Log.e("PlanetaryAlarm", "saveSvg failed", e)
+            call.reject("save failed: ${e.message}")
+        }
+    }
+
+    @PluginMethod
     fun cancel(call: PluginCall) {
         val timestamp = call.getLong("timestamp")?.toLong()
             ?: call.getString("timestamp")?.toLongOrNull()

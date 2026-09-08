@@ -37,6 +37,10 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
       console.warn('PlanetaryAlarm.saveMedia() called on web — falling back to browser download.')
       return { success: false }
     },
+    async saveSvg(_opts) {
+      console.warn('PlanetaryAlarm.saveSvg() called on web — falling back to browser download.')
+      return { success: false }
+    },
   }),
 })
 
