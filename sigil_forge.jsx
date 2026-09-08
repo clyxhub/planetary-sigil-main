@@ -611,38 +611,18 @@ export default function ChaosSigilForge() {
 
   const isNative = typeof window !== 'undefined' && window.Capacitor;
 
-  // ── Native download: try system save dialog, then silent fallback ─────
+  // ── Native download: write to app dir + media scan (always works) ─────
   const nativeDownload = (dataUrl, svg, fileName) => {
-    // 1st: system save dialog (user picks where)
-    PlanetaryAlarm.openFileWithSystemUI({ dataUrl, svg, fileName })
+    PlanetaryAlarm.saveFile({ dataUrl, svg, fileName })
       .then((r) => {
         if (r.success) {
-          alert('Saved to the location you chose.');
+          alert('Sigil saved! Find it in your file manager under Downloads/PlanetarySigils.');
         } else {
-          // 2nd: silent save (always works, writes to app dir)
-          return PlanetaryAlarm.silentSave({ dataUrl, svg, fileName })
-            .then((r2) => {
-              if (r2.success) {
-                alert('Saved to your device. Check your Downloads folder.');
-              } else {
-                alert('Could not save the file.');
-              }
-            });
+          alert('Could not save the file.');
         }
       })
-      .catch(() => {
-        // System dialog cancelled or failed — fall back to silent save
-        return PlanetaryAlarm.silentSave({ dataUrl, svg, fileName })
-          .then((r2) => {
-            if (r2.success) {
-              alert('Saved to your device. Check your Downloads folder.');
-            } else {
-              alert('Could not save the file.');
-            }
-          })
-          .catch((err2) => {
-            alert('Could not save the file: ' + (err2?.message || 'unknown error'));
-          });
+      .catch((err) => {
+        alert('Could not save: ' + (err?.message || 'unknown error'));
       });
   };
 

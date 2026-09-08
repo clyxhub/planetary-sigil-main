@@ -7,7 +7,6 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
       return { success: false }
     },
     async cancel(_opts) {
-      console.warn('PlanetaryAlarm.cancel() called on web.')
       return { success: false }
     },
     async hasExactAlarmPermission() {
@@ -27,12 +26,8 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
         value: typeof Notification !== 'undefined' && Notification.permission === 'granted',
       }
     },
-    async openFileWithSystemUI(_opts) {
-      console.warn('PlanetaryAlarm.openFileWithSystemUI() called on web — using browser download.')
-      return { success: false }
-    },
-    async silentSave(_opts) {
-      console.warn('PlanetaryAlarm.silentSave() called on web — using browser download.')
+    async saveFile(_opts) {
+      console.warn('PlanetaryAlarm.saveFile() called on web — using browser download.')
       return { success: false }
     },
   }),
