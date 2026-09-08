@@ -4,6 +4,7 @@ import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
 import {
   Menu,
   X,
+  Palette,
   BookOpen,
   Sparkles,
   Wand2,
@@ -38,7 +39,7 @@ const PLANETS = [
   {
     name: "Saturn",
     symbol: "♄",
-    color: "#8b5cf6",
+    color: "#8b8b8b",
     size: 3,
     maxNumber: 9,
     powers: ["Protection","Discipline","Banishing","Boundaries","Wisdom","Stability","Binding","Meditation","Authority","Focus","Defense","Patience","Shadow Work","Isolation","Structure","Karmic Justice","Manifestation Through Delay","Maturity","Ending Cycles","Limitation","Endurance","Persistence","Containment","Grounding"],
@@ -47,7 +48,7 @@ const PLANETS = [
   {
     name: "Jupiter",
     symbol: "♃",
-    color: "#06b6d4",
+    color: "#3b82f6",
     size: 4,
     maxNumber: 16,
     powers: ["Luck","Wealth","Expansion","Success","Prosperity","Abundance","Growth","Leadership","Victory","Blessings","Financial Success","Good Fortune","Honor","Influence","Career Advancement","Justice","Opportunities","Spiritual Growth","Wisdom","Power","Royal Favor","Elevation","Optimism","Generosity"],
@@ -74,7 +75,7 @@ const PLANETS = [
   {
     name: "Venus",
     symbol: "♀",
-    color: "#ec4899",
+    color: "#16a34a",
     size: 7,
     maxNumber: 49,
     powers: ["Love","Beauty","Charm","Attraction","Harmony","Relationships","Romance","Pleasure","Luxury","Sensuality","Affection","Popularity","Self Love","Friendship","Emotional Healing","Fertility","Desirability","Art","Grace","Seduction","Softness","Passion","Magnetism","Intimacy"],
@@ -83,7 +84,7 @@ const PLANETS = [
   {
     name: "Mercury",
     symbol: "☿",
-    color: "#22c55e",
+    color: "#f97316",
     size: 8,
     maxNumber: 64,
     powers: ["Communication","Learning","Business","Writing","Speech","Technology","Knowledge","Mental Clarity","Persuasion","Networking","Commerce","Teaching","Memory","Negotiation","Language","Adaptability","Quick Thinking","Cleverness","Logic","Information","Curiosity","Expression","Intellect","Strategy"],
@@ -92,7 +93,7 @@ const PLANETS = [
   {
     name: "Moon",
     symbol: "☾",
-    color: "#94a3b8",
+    color: "#e5e7eb",
     size: 9,
     maxNumber: 81,
     powers: ["Dreams","Psychic Power","Intuition","Emotion","Divination","Mysticism","Imagination","Lunar Magick","Inner Vision","Spiritual Sensitivity","Subconscious Mind","Reflection","Clairvoyance","Night Energy","Emotional Healing","Psychic Protection","Astral Projection","Prophetic Dreams","Fantasy","Water Energy","Receptivity","Cycles","Sensitivity","Moon Rituals"],
@@ -257,6 +258,32 @@ function removeDuplicateLetters(text) {
   }).join("");
 }
 
+const THEMES = [
+  { id: "night", label: "Midnight", glow: "rgba(139,92,246,0.2)" },
+  { id: "violet", label: "Violet", glow: "rgba(139,92,246,0.28)" },
+  { id: "ocean", label: "Ocean", glow: "rgba(14,165,233,0.24)" },
+  { id: "emerald", label: "Emerald", glow: "rgba(16,185,129,0.22)" },
+  { id: "rose", label: "Rose", glow: "rgba(244,114,182,0.22)" },
+  { id: "light", label: "Light", glow: "rgba(139,92,246,0.15)" },
+];
+
+function loadPersist(key, fallback) {
+  try {
+    if (typeof localStorage === "undefined") return fallback;
+    const raw = localStorage.getItem(key);
+    return raw == null ? fallback : JSON.parse(raw);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function savePersist(key, value) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) { /* ignore */ }
+}
+
 export default function ChaosSigilForge() {
   const [planet, setPlanet] = useState(PLANETS[0]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -274,17 +301,51 @@ export default function ChaosSigilForge() {
   const [intention, setIntention] = useState("I attract creative power and artistic recognition");
 
   // --- Planetary Hours state ---
-  const [coords, setCoords] = useState(null); // { lat, lon }
-  const [locationStatus, setLocationStatus] = useState("idle"); // idle | requesting | denied | manual
+  const [coords, setCoords] = useState(() => loadPersist("ps_coords", null)); // { lat, lon }
+  const [locationStatus, setLocationStatus] = useState(() =>
+    loadPersist("ps_coords", null) ? "granted" : "idle"
+  ); // idle | requesting | denied | granted
   const [manualLat, setManualLat] = useState("");
   const [manualLon, setManualLon] = useState("");
   const [now, setNow] = useState(new Date());
-  const [notifyKeys, setNotifyKeys] = useState(new Set());
+  const [scheduledAlarms, setScheduledAlarms] = useState(() =>
+    loadPersist("ps_alarms", [])
+  ); // [{ ts, planet }]
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== "undefined" ? Notification.permission : "unsupported"
   );
-  const [leadMinutes, setLeadMinutes] = useState(5);
+  const [leadMinutes, setLeadMinutes] = useState(() => loadPersist("ps_lead", 5));
+  const [theme, setTheme] = useState(() => loadPersist("ps_theme", "night"));
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const timersRef = useRef([]);
+
+  const notifyKeys = useMemo(
+    () => new Set(scheduledAlarms.map((a) => String(a.ts))),
+    [scheduledAlarms]
+  );
+
+  // Persist settings so they survive closing/reopening the app.
+  useEffect(() => savePersist("ps_coords", coords), [coords]);
+  useEffect(() => savePersist("ps_alarms", scheduledAlarms), [scheduledAlarms]);
+  useEffect(() => savePersist("ps_lead", leadMinutes), [leadMinutes]);
+  useEffect(() => savePersist("ps_theme", theme), [theme]);
+
+  // On launch, re-schedule any persisted reminders that are still in the future
+  // so they keep working even if the app was closed (or the phone rebooted).
+  useEffect(() => {
+    if (!(typeof window !== "undefined" && window.Capacitor)) return;
+    const nowMs = Date.now();
+    const alarms = scheduledAlarms.filter((a) => a.ts > nowMs);
+    const lead = leadMinutes;
+    alarms.forEach((a) => {
+      PlanetaryAlarm.schedule({
+        timestamp: String(a.ts),
+        planetName: a.planet,
+        leadMinutes: lead,
+      }).catch(console.error);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -347,23 +408,29 @@ export default function ChaosSigilForge() {
   };
 
   const toggleNotify = async (hour) => {
+    const ts = hour.start.getTime();
     const isAdding = !notifyKeys.has(hour.key);
-    
-    setNotifyKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(hour.key)) next.delete(hour.key);
-      else next.add(hour.key);
-      return next;
-    });
+
+    if (isAdding) {
+      setScheduledAlarms((prev) => {
+        const others = prev.filter((a) => a.ts !== ts);
+        return [...others, { ts, planet: hour.planet }];
+      });
+    } else {
+      setScheduledAlarms((prev) => prev.filter((a) => a.ts !== ts));
+    }
 
     const opts = {
-      timestamp: hour.start.getTime().toString(),
+      timestamp: ts.toString(),
       planetName: hour.planet,
     };
 
     if (typeof window !== 'undefined' && window.Capacitor) {
       try {
         if (isAdding) {
+          if (await PlanetaryAlarm.hasExactAlarmPermission && !(await PlanetaryAlarm.hasExactAlarmPermission()).value) {
+            await PlanetaryAlarm.requestExactAlarmPermission();
+          }
           await PlanetaryAlarm.schedule({ ...opts, leadMinutes });
         } else {
           await PlanetaryAlarm.cancel(opts);
@@ -520,9 +587,14 @@ export default function ChaosSigilForge() {
     }
   };
 
+  const activeTheme = THEMES.find((t) => t.id === theme) || THEMES[0];
+
   return (
-    <div className="min-h-screen bg-black text-white overflow-x-hidden relative">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.2),transparent_40%)] pointer-events-none" />
+    <div className="min-h-screen bg-black text-white overflow-x-hidden relative" data-theme={theme}>
+      <div
+        className="absolute inset-0 pointer-events-none transition-all duration-700"
+        style={{ backgroundImage: `radial-gradient(circle at top, ${activeTheme.glow}, transparent 40%)` }}
+      />
 
       <div className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between safe-top">
@@ -535,12 +607,41 @@ export default function ChaosSigilForge() {
             </p>
           </div>
 
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-12 h-12 rounded-2xl border border-white/10 bg-zinc-900/70 flex items-center justify-center hover:scale-105 transition-all"
-          >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                aria-label="Choose theme"
+                className="w-12 h-12 rounded-2xl border border-white/10 bg-zinc-900/70 flex items-center justify-center hover:scale-105 transition-all"
+              >
+                <Palette size={20} />
+              </button>
+              {themeMenuOpen && (
+                <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur-xl p-2 z-50 shadow-[0_0_30px_rgba(0,0,0,0.4)]">
+                  <div className="px-3 py-1 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Theme</div>
+                  {THEMES.map((t) => {
+                    const isActive = t.id === theme;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => { setTheme(t.id); setThemeMenuOpen(false); }}
+                        className={`w-full rounded-xl px-3 py-2 text-sm text-left flex items-center justify-between transition-all ${isActive ? 'bg-white/10 text-white' : 'text-zinc-300 hover:bg-white/[0.05]'}`}
+                      >
+                        <span>{t.label}</span>
+                        <span className="w-3 h-3 rounded-full border border-white/40" style={{ backgroundColor: t.glow }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="w-12 h-12 rounded-2xl border border-white/10 bg-zinc-900/70 flex items-center justify-center hover:scale-105 transition-all"
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -992,8 +1093,8 @@ export default function ChaosSigilForge() {
                       <p className="text-xs text-zinc-400 mb-3">
                         Get a heads-up notification before the ringing alarm, or disable the heads-up.
                       </p>
-                      <div className="grid grid-cols-4 gap-2">
-                        {[0, 5, 10, 15].map((mins) => {
+                      <div className="grid grid-cols-3 gap-2">
+                        {[0, 5, 10, 15, 30, 60].map((mins) => {
                           const active = leadMinutes === mins;
                           return (
                             <button
@@ -1001,7 +1102,7 @@ export default function ChaosSigilForge() {
                               onClick={() => setLeadMinutes(mins)}
                               className={`rounded-2xl py-3 border text-sm font-bold transition-all duration-300 ${active ? 'border-green-400 bg-green-500/20 text-green-100' : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'}`}
                             >
-                              {mins === 0 ? 'None' : `${mins}m`}
+                              {mins === 0 ? 'None' : mins >= 60 ? '1h' : `${mins}m`}
                             </button>
                           );
                         })}
