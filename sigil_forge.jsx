@@ -591,7 +591,9 @@ export default function ChaosSigilForge() {
   const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
   <rect width="360" height="360" fill="black"/>
-  <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
+    <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>`;
     const ext = format === 'svg' ? 'svg' : format === 'jpeg' ? 'jpg' : 'png';
     const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'svg' ? 'image/svg+xml' : 'image/png';
@@ -1557,14 +1559,16 @@ export default function ChaosSigilForge() {
             <div className="rounded-3xl border border-white/10 bg-black/60 min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
                 {buildSeal()}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={planet.color}
-                  strokeWidth={strokeWidth}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={planet.color}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
               </svg>
               <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40 rounded-3xl">
                 <div className="px-4 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-sm font-bold text-white">
@@ -1659,14 +1663,16 @@ export default function ChaosSigilForge() {
                 >
                   <svg viewBox="0 0 360 360" className="w-[600px] max-w-full aspect-square">
                     {buildSeal()}
-                    <path
-                      d={pathData}
-                      fill="none"
-                      stroke={planet.color}
-                      strokeWidth={strokeWidth * 1.5}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
+                    <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
+                      <path
+                        d={pathData}
+                        fill="none"
+                        stroke={planet.color}
+                        strokeWidth={strokeWidth * 1.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </g>
                   </svg>
 
                   {modalChooserOpen && (
