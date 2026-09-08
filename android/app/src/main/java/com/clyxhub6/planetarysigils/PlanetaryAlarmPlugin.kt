@@ -34,14 +34,12 @@ import java.io.FileOutputStream
 )
 class PlanetaryAlarmPlugin : Plugin() {
 
-    private var pendingStamp: Long = 0L
-    private var pendingPlanet: String? = null
-    private var pendingLead: Long = 0L
-
     @PluginMethod
-    @Permission(alias = "notifications")
     fun schedule(call: PluginCall) {
-        // Capacitor may pass a number or a string. We expect a long timestamp.
+        // The alarm ring is NOT gated on the notification permission: it always
+        // gets scheduled, and rings even if the user declined POST_NOTIFICATIONS.
+        // (POST_NOTIFICATIONS only controls whether the reminder/notification is
+        // visible, not whether the exact alarm fires.)
         val timestamp = call.getLong("timestamp")?.toLong()
             ?: call.getString("timestamp")?.toLongOrNull()
         val planetName = call.getString("planetName")
@@ -52,33 +50,10 @@ class PlanetaryAlarmPlugin : Plugin() {
             return
         }
 
-        // Stash args; the actual scheduling happens in the permission callback so that
-        // on Android 13+ we first ask for POST_NOTIFICATIONS.
-        pendingStamp = timestamp
-        pendingPlanet = planetName
-        pendingLead = leadMinutes.toLong()
-
-        // If permission is already granted, @Permission runs the method body and then
-        // immediately invokes the callback; if not, it prompts first.
-    }
-
-    @PermissionCallback
-    fun schedulePermissionCallback(call: PluginCall) {
-        val planetName = pendingPlanet
-        val timestamp = pendingStamp
-        if (planetName == null || timestamp == 0L) {
-            call.reject("Missing schedule arguments")
-            return
-        }
-
         scheduleAlarm(timestamp, planetName)
-        if (pendingLead > 0) {
-            scheduleReminder(timestamp, planetName, pendingLead)
+        if (leadMinutes > 0) {
+            scheduleReminder(timestamp, planetName, leadMinutes.toLong())
         }
-
-        pendingPlanet = null
-        pendingStamp = 0L
-        pendingLead = 0L
 
         val ret = JSObject()
         ret.put("success", true)
