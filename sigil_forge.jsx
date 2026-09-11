@@ -388,6 +388,7 @@ export default function ChaosSigilForge() {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [alarmSound, setAlarmSound] = useState({ uri: "", name: "Default alarm" });
   const [soundModalOpen, setSoundModalOpen] = useState(false);
+  const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
   const timersRef = useRef([]);
   const webTimersRef = useRef({});
 
@@ -401,6 +402,14 @@ export default function ChaosSigilForge() {
   useEffect(() => savePersist("ps_alarms", scheduledAlarms), [scheduledAlarms]);
   useEffect(() => savePersist("ps_lead", leadMinutes), [leadMinutes]);
   useEffect(() => savePersist("ps_theme", theme), [theme]);
+
+  // Apply the theme at the document root so it is global (body, overlays,
+  // menus) rather than only on the main page's wrapper div.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.setAttribute("data-theme", theme);
+    if (document.body) document.body.setAttribute("data-theme", theme);
+  }, [theme]);
 
   // Re-assert every persisted future alarm with the native layer. Idempotent:
   // native AlarmStore upserts by timestamp. Called on mount and whenever the app
@@ -689,7 +698,7 @@ export default function ChaosSigilForge() {
     PlanetaryAlarm.saveFile({ dataUrl, svg, fileName })
       .then((r) => {
         if (r && r.success) {
-          alert('Sigil saved! Find it in your Gallery under Pictures/PlanetarySigils (SVG files go to Downloads/PlanetarySigils).');
+          alert('Sigil saved! Find it in your Gallery under Pictures/PlanetarySigils.');
         } else {
           alert('Could not save the file.');
         }
@@ -760,32 +769,6 @@ export default function ChaosSigilForge() {
     rasterToDataUrl((dataUrl) => triggerDownload(dataUrl));
   };
 
-  // ── Quick on-device download test (no sigil generation needed) ────────
-  const testDownload = () => {
-    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"><rect width="360" height="360" fill="#ffffff"/><circle cx="180" cy="180" r="120" fill="none" stroke="${planet.color}" stroke-width="12"/></svg>`;
-    const fileName = `sigil-test-${Date.now()}.png`;
-    if (isNative) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 512;
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, 512, 512);
-        nativeDownload(canvas.toDataURL('image/png', 0.92), null, fileName);
-      };
-      img.onerror = () => alert('Could not render the test image.');
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
-      return;
-    }
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
-
   const closeSigilModal = () => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     setModalChooserOpen(false);
@@ -818,74 +801,101 @@ export default function ChaosSigilForge() {
   const spiritText = langText(corr.spirit);
   const divineText = langText(corr.divine);
   const sealWording = showCorrLang === "he";
-  const sealNameSize = sealWording ? 26 : 18;
+  const ringNameSize = sealWording ? 13 : 15;
 
-  // Talismanic seal drawn around the sigil: ring + planet sign + names at the quarters.
-  const buildSeal = () => (
+  // "Agrippa" planetary signature: connect the kamea cells in numeric order
+  // 1..n^2 — the classic figure derived from the planet's magic square.
+  const kameaSignature = (() => {
+    const size = planet.size;
+    const cell = 360 / size;
+    const pos = {};
+    planet.grid.forEach((row, r) => row.forEach((v, c) => {
+      pos[v] = { x: c * cell + cell / 2, y: r * cell + cell / 2 };
+    }));
+    let d = "";
+    for (let n = 1; n <= size * size; n++) {
+      const p = pos[n];
+      if (!p) continue;
+      d += (d === "" ? "M" : "L") + ` ${p.x} ${p.y} `;
+    }
+    return d.trim();
+  })();
+
+  // Ring guide paths at radius 157, midway between the r=168 and r=146 rings,
+  // used to curve the inscribed names inside the annulus.
+  const RING_PATHS = {
+    top: "M 23 180 A 157 157 0 0 1 337 180",
+    bottom: "M 23 180 A 157 157 0 0 0 337 180",
+    right: "M 180 23 A 157 157 0 0 1 180 337",
+    left: "M 180 337 A 157 157 0 0 1 180 23",
+  };
+
+  // Talismanic seal: Agrippa kamea signature behind, ring, curved inscriptions,
+  // and the planet sign moved to the top-left corner.
+  const buildSeal = (uid = "a") => (
     <>
-      {showSign && (
-        <text
-          x="180" y="180"
-          textAnchor="middle" dominantBaseline="central"
-          fontSize="240"
-          fill={planet.color}
-          opacity="0.22"
-        >
-          {corr.sign}
-        </text>
-      )}
+      <defs>
+        <path id={`sealArcTop-${uid}`} d={RING_PATHS.top} />
+        <path id={`sealArcBottom-${uid}`} d={RING_PATHS.bottom} />
+        <path id={`sealArcRight-${uid}`} d={RING_PATHS.right} />
+        <path id={`sealArcLeft-${uid}`} d={RING_PATHS.left} />
+      </defs>
+      <g transform="translate(180 180) scale(0.82) translate(-180 -180)">
+        <path d={kameaSignature} fill="none" stroke={planet.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.14" />
+      </g>
       {(showArchangel || showIntelligence || showSpirit || showDivineName) && (
         <>
-          <circle cx="180" cy="180" r="168" fill="none" stroke={planet.color} strokeWidth="1.4" opacity="0.4" />
-          <circle cx="180" cy="180" r="146" fill="none" stroke={planet.color} strokeWidth="0.8" opacity="0.24" />
+          <circle cx="180" cy="180" r="168" fill="none" stroke={planet.color} strokeWidth="1.4" opacity="0.55" />
+          <circle cx="180" cy="180" r="146" fill="none" stroke={planet.color} strokeWidth="0.8" opacity="0.35" />
           {showArchangel && (
-            <text x="180" y="46" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize}>
-              {archText}
+            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+              <textPath href={`#sealArcTop-${uid}`} startOffset="50%" textAnchor="middle">{archText}</textPath>
             </text>
           )}
           {showIntelligence && (
-            <text x="326" y="180" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize} transform="rotate(90 326 180)">
-              {intelText}
+            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+              <textPath href={`#sealArcRight-${uid}`} startOffset="50%" textAnchor="middle">{intelText}</textPath>
             </text>
           )}
           {showSpirit && (
-            <text x="180" y="330" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize}>
-              {spiritText}
+            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+              <textPath href={`#sealArcBottom-${uid}`} startOffset="50%" textAnchor="middle">{spiritText}</textPath>
             </text>
           )}
           {showDivineName && (
-            <text x="34" y="180" textAnchor="middle" fill={planet.color} fillOpacity="0.9" fontWeight="bold" fontSize={sealNameSize} transform="rotate(-90 34 180)">
-              {divineText}
+            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+              <textPath href={`#sealArcLeft-${uid}`} startOffset="50%" textAnchor="middle">{divineText}</textPath>
             </text>
           )}
         </>
       )}
+      {showSign && corr.sign && (
+        <text x="40" y="52" textAnchor="middle" dominantBaseline="central" fontSize="40" fill={planet.color} opacity="0.95">{corr.sign}</text>
+      )}
     </>
   );
 
-  // Plain-SVG mirror of buildSeal() so the exported file contains the full
-  // design (planet sign, circles, archangel/intelligence/spirit/divine names),
-  // not just the sigil path.
+  // Plain-SVG mirror of buildSeal() for export (single document, so no uid).
   const buildSealSvg = () => {
+    const ring = `fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${ringNameSize}"`;
     let s = "";
-    if (showSign && corr.sign) {
-      s += `<text x="180" y="180" text-anchor="middle" dominant-baseline="central" font-size="240" fill="${planet.color}" opacity="0.22">${escapeXml(corr.sign)}</text>`;
-    }
+    s += `<defs>`;
+    s += `<path id="sealArcTop" d="${RING_PATHS.top}"/>`;
+    s += `<path id="sealArcBottom" d="${RING_PATHS.bottom}"/>`;
+    s += `<path id="sealArcRight" d="${RING_PATHS.right}"/>`;
+    s += `<path id="sealArcLeft" d="${RING_PATHS.left}"/>`;
+    s += `</defs>`;
+    s += `<g transform="translate(180 180) scale(0.82) translate(-180 -180)"><path d="${kameaSignature}" fill="none" stroke="${planet.color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.14"/></g>`;
     if (showArchangel || showIntelligence || showSpirit || showDivineName) {
       s += `<circle cx="180" cy="180" r="168" fill="none" stroke="${planet.color}" stroke-width="1.4" opacity="0.55"/>`;
       s += `<circle cx="180" cy="180" r="146" fill="none" stroke="${planet.color}" stroke-width="0.8" opacity="0.35"/>`;
-      if (showArchangel) {
-        s += `<text x="180" y="46" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}">${escapeXml(archText)}</text>`;
-      }
-      if (showIntelligence) {
-        s += `<text x="326" y="180" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}" transform="rotate(90 326 180)">${escapeXml(intelText)}</text>`;
-      }
-      if (showSpirit) {
-        s += `<text x="180" y="330" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}">${escapeXml(spiritText)}</text>`;
-      }
-      if (showDivineName) {
-        s += `<text x="34" y="180" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}" transform="rotate(-90 34 180)">${escapeXml(divineText)}</text>`;
-      }
+      if (showArchangel) s += `<text ${ring}><textPath href="#sealArcTop" startOffset="50%" text-anchor="middle">${escapeXml(archText)}</textPath></text>`;
+      if (showIntelligence) s += `<text ${ring}><textPath href="#sealArcRight" startOffset="50%" text-anchor="middle">${escapeXml(intelText)}</textPath></text>`;
+      if (showSpirit) s += `<text ${ring}><textPath href="#sealArcBottom" startOffset="50%" text-anchor="middle">${escapeXml(spiritText)}</textPath></text>`;
+      if (showDivineName) s += `<text ${ring}><textPath href="#sealArcLeft" startOffset="50%" text-anchor="middle">${escapeXml(divineText)}</textPath></text>`;
+    }
+    if (showSign && corr.sign) {
+      s += `<text x="40" y="52" text-anchor="middle" dominant-baseline="central" font-size="40" fill="${planet.color}" opacity="0.95">${escapeXml(corr.sign)}</text>`;
     }
     return s;
   };
@@ -1718,7 +1728,7 @@ export default function ChaosSigilForge() {
 
             <div className="rounded-3xl border border-black/10 bg-white min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
-                {buildSeal()}
+                {buildSeal("out")}
                 <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
                   <path
                     d={pathData}
@@ -1795,17 +1805,13 @@ export default function ChaosSigilForge() {
               </div>
             ) : null}
 
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <button onClick={() => downloadSigil('svg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">SVG</button>
-              <button onClick={() => downloadSigil('png')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">PNG</button>
-              <button onClick={() => downloadSigil('jpeg')} disabled={!pathData} className="rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-xs font-bold hover:bg-white/[0.06] transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed">JPEG</button>
-            </div>
-            <div className="mt-2">
+            <div className="mt-3">
               <button
-                onClick={testDownload}
-                className="w-full rounded-2xl py-3 border border-dashed border-emerald-400/40 bg-emerald-500/10 text-emerald-100 text-xs font-bold hover:bg-emerald-500/20 transition-all duration-300"
+                onClick={() => setDownloadChooserOpen(true)}
+                disabled={!pathData}
+                className="w-full rounded-2xl py-4 border border-emerald-400/30 bg-emerald-500/10 text-emerald-100 text-sm font-black hover:bg-emerald-500/20 transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                Test download on this device
+                Download Sigil
               </button>
             </div>
           </div>
@@ -1830,7 +1836,7 @@ export default function ChaosSigilForge() {
                   onPointerMove={moveSigilPress}
                 >
                   <svg viewBox="0 0 360 360" className="w-[600px] max-w-full aspect-square">
-                    {buildSeal()}
+                    {buildSeal("modal")}
                     <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
                       <path
                         d={pathData}
@@ -1852,12 +1858,6 @@ export default function ChaosSigilForge() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
-                        onClick={() => downloadSigil('svg')}
-                        className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
-                      >
-                        SVG
-                      </button>
-                      <button
                         onClick={() => downloadSigil('png')}
                         className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-bold hover:bg-white/[0.12] transition-all min-h-11"
                       >
@@ -1877,6 +1877,38 @@ export default function ChaosSigilForge() {
           )}
         </div>
       </div>
+
+      {downloadChooserOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setDownloadChooserOpen(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-3xl border border-white/10 bg-zinc-950 p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-black text-lg">Download format</h3>
+            <button
+              onClick={() => { setDownloadChooserOpen(false); downloadSigil('png'); }}
+              className="w-full rounded-2xl py-3 bg-white text-black text-sm font-black hover:opacity-90 transition-all"
+            >
+              PNG
+            </button>
+            <button
+              onClick={() => { setDownloadChooserOpen(false); downloadSigil('jpeg'); }}
+              className="w-full rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-sm font-bold hover:bg-white/[0.06] transition-all"
+            >
+              JPEG
+            </button>
+            <button
+              onClick={() => setDownloadChooserOpen(false)}
+              className="w-full rounded-2xl py-2 text-xs text-zinc-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {soundModalOpen && (
         <div

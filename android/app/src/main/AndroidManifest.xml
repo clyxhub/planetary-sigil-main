@@ -43,9 +43,10 @@
         <activity
             android:name=".AlarmActivity"
             android:exported="false"
-            android:showOnLockScreen="true"
-            android:showForAllUsers="true"
-            android:theme="@style/AppTheme.NoActionBarLaunch" />
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme.Alarm" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
