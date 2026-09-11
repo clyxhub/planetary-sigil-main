@@ -20,6 +20,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Guarantee the exact SDK pieces the project pins
+      # (compileSdk 34 + buildToolsVersion 35.0.0).
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;35.0.0'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
@@ -49,7 +59,24 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      # Prove the native components for the three system features survived
+      # manifest merging / build into the signed APK.
+      - name: Verify receivers and permissions in APK
+        working-directory: android
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          AAPT=$(ls "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" > /tmp/manifest.txt
+          for token in BootReceiver AlarmReceiver ReminderReceiver AlarmService AlarmActivity \
+                       RECEIVE_BOOT_COMPLETED SCHEDULE_EXACT_ALARM POST_NOTIFICATIONS \
+                       FOREGROUND_SERVICE_MEDIA_PLAYBACK USE_FULL_SCREEN_INTENT \
+                       WRITE_EXTERNAL_STORAGE; do
+            grep -q "$token" /tmp/manifest.txt || { echo "MISSING: $token"; exit 1; }
+          done
+          echo "Manifest verification passed"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

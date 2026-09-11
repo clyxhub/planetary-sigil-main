@@ -391,14 +391,17 @@ export default function ChaosSigilForge() {
   useEffect(() => savePersist("ps_lead", leadMinutes), [leadMinutes]);
   useEffect(() => savePersist("ps_theme", theme), [theme]);
 
-  // On launch, re-schedule any persisted reminders that are still in the future
-  // so they keep working even if the app was closed (or the phone rebooted).
+  // On launch, re-assert any persisted future alarms with the native layer.
+  // The OS alarms themselves are owned and persisted natively (AlarmStore +
+  // BootReceiver), so this only reconciles the bridge after an app restart; it
+  // is idempotent and never creates duplicates. Past entries are pruned.
   useEffect(() => {
     if (!(typeof window !== "undefined" && window.Capacitor)) return;
     const nowMs = Date.now();
-    const alarms = scheduledAlarms.filter((a) => a.ts > nowMs);
+    const future = scheduledAlarms.filter((a) => a.ts > nowMs);
+    if (future.length !== scheduledAlarms.length) setScheduledAlarms(future);
     const lead = leadMinutes;
-    alarms.forEach((a) => {
+    future.forEach((a) => {
       PlanetaryAlarm.schedule({
         timestamp: String(a.ts),
         planetName: a.planet,
@@ -611,12 +614,12 @@ export default function ChaosSigilForge() {
 
   const isNative = typeof window !== 'undefined' && window.Capacitor;
 
-  // ── Native download: write to app dir + media scan (always works) ─────
+  // ── Native download: write to user-visible storage (Pictures / Downloads) ─
   const nativeDownload = (dataUrl, svg, fileName) => {
     PlanetaryAlarm.saveFile({ dataUrl, svg, fileName })
       .then((r) => {
-        if (r.success) {
-          alert('Sigil saved! Find it in your file manager under Downloads/PlanetarySigils.');
+        if (r && r.success) {
+          alert('Sigil saved! Find it in your Gallery under Pictures/PlanetarySigils (SVG files go to Downloads/PlanetarySigils).');
         } else {
           alert('Could not save the file.');
         }

@@ -8,6 +8,15 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
+/**
+ * Fires at (planetaryHourStart - leadMinutes) to deliver the early "hour is
+ * coming up" reminder. The OS alarm is scheduled by PlanetaryAlarmPlugin and
+ * re-registered after boot by BootReceiver; this receiver only constructs and
+ * posts the notification.
+ *
+ * A persisted marker (see AlarmStore.isReminderFired) prevents the reminder
+ * from being posted twice when the device restarts between scheduling and firing.
+ */
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -16,10 +25,16 @@ class ReminderReceiver : BroadcastReceiver() {
         val leadMinutes = intent.getLongExtra("leadMinutes", 0L)
         Log.d(TAG, "Reminder fired: $planetName ${leadMinutes}m before @ $timestamp")
 
+        if (timestamp <= 0L || AlarmStore.isReminderFired(context, timestamp)) {
+            Log.d(TAG, "Skipping duplicate reminder @ $timestamp")
+            return
+        }
+        AlarmStore.markReminderFired(context, timestamp)
+
         val contentIntent = PendingIntent.getActivity(
             context, timestamp.toInt(),
             Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -37,7 +52,7 @@ class ReminderReceiver : BroadcastReceiver() {
             .build()
 
         context.getSystemService(NotificationManager::class.java)
-            .notify(timestamp.toInt(), notification)
+            .notify(timestamp.toInt() + 1, notification)
     }
 
     companion object {

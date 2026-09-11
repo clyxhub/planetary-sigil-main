@@ -13,8 +13,18 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
+/**
+ * Foreground service that provides guaranteed audible + vibrating alarm output.
+ *
+ * The AlarmReceiver starts this service after posting the full-screen
+ * notification. Because it is foreground, the audio keeps playing even if the
+ * app process was killed, so the alarm cannot be silently dropped. The channel
+ * is deliberately the same ALARM_CHANNEL_ID created by PlanetaryAlarmPlugin so
+ * there is exactly one high-importance alarm channel.
+ */
 class AlarmService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
@@ -24,14 +34,17 @@ class AlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val planetName = intent?.getStringExtra("planetName") ?: "Unknown"
 
-        val channelId = "planetary_alarm_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Planetary Alarms", NotificationManager.IMPORTANCE_HIGH)
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(
+                    PlanetaryAlarmPlugin.ALARM_CHANNEL_ID,
+                    "Planetary Alarms",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+            )
         }
 
-        val notification: Notification = NotificationCompat.Builder(this, channelId)
+        val notification: Notification = NotificationCompat.Builder(this, PlanetaryAlarmPlugin.ALARM_CHANNEL_ID)
             .setContentTitle("Planetary Hour: $planetName")
             .setContentText("The hour of $planetName has begun.")
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -42,39 +55,51 @@ class AlarmService : Service() {
 
         startForeground(1001, notification)
 
-        // Play default alarm sound ringing continuously
-        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) 
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(this@AlarmService, alarmUri)
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .build()
-            setAudioAttributes(audioAttributes)
-            isLooping = true
-            prepare()
-            start()
-        }
+        // Play the default alarm sound, looping, at alarm volume.
+        try {
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(this@AlarmService, alarmUri)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                )
+                isLooping = true
+                prepare()
+                start()
+            }
+
+            vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            vibrator?.vibrate(longArrayOf(0, 1000, 1000), 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not start alarm sound", e)
         }
-        val pattern = longArrayOf(0, 1000, 1000)
-        vibrator?.vibrate(pattern, 0)
 
         return START_STICKY
     }
 
     override fun onDestroy() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        vibrator?.cancel()
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            vibrator?.cancel()
+        } catch (_: Exception) {}
+        mediaPlayer = null
+        vibrator = null
         super.onDestroy()
+    }
+
+    companion object {
+        private const val TAG = "AlarmService"
     }
 }
