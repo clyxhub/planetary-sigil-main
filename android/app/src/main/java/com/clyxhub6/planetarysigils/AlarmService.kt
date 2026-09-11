@@ -9,6 +9,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.Vibrator
@@ -55,11 +56,14 @@ class AlarmService : Service() {
 
         startForeground(1001, notification)
 
-        // Play the default alarm sound, looping, at alarm volume.
+        // Play the chosen alarm sound (looping) at alarm volume; fall back to the
+        // system default alarm tone.
         try {
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val chosen = AlarmStore.getAlarmSoundUri(this)?.let { Uri.parse(it) }
+            val alarmUri = chosen
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
+            
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@AlarmService, alarmUri)
                 setAudioAttributes(

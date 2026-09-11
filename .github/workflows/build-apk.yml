@@ -73,7 +73,7 @@ jobs:
           AAPT=$(ls "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
           "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" > /tmp/manifest.txt
           for token in BootReceiver AlarmReceiver ReminderReceiver AlarmService AlarmActivity \
-                       RECEIVE_BOOT_COMPLETED SCHEDULE_EXACT_ALARM POST_NOTIFICATIONS \
+                       RECEIVE_BOOT_COMPLETED SCHEDULE_EXACT_ALARM USE_EXACT_ALARM POST_NOTIFICATIONS \
                        FOREGROUND_SERVICE_MEDIA_PLAYBACK USE_FULL_SCREEN_INTENT \
                        WRITE_EXTERNAL_STORAGE; do
             grep -q "$token" /tmp/manifest.txt || { echo "MISSING: $token"; exit 1; }

@@ -30,6 +30,24 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
       console.warn('PlanetaryAlarm.saveFile() called on web — using browser download.')
       return { success: false }
     },
+    async hasFullScreenIntentPermission() {
+      return { value: true }
+    },
+    async requestFullScreenIntentPermission() {
+      return { value: true }
+    },
+    async getAlarmSound() {
+      return { uri: '', name: 'Default alarm' }
+    },
+    async pickAlarmSound() {
+      return { uri: '', name: 'Default alarm' }
+    },
+    async pickAlarmSoundFile() {
+      return { uri: '', name: 'Default alarm' }
+    },
+    async setDefaultAlarmSound() {
+      return { uri: '', name: 'Default alarm' }
+    },
   }),
 })
 

@@ -14,6 +14,7 @@ object AlarmStore {
 
     private const val PREFS = "planetary_alarms"
     private const val KEY_ITEMS = "items"
+    private const val KEY_SOUND_URI = "alarm_sound_uri"
     const val KEY_REMIND_FIRED = "remind_fired" // marker prevents re-firing an already-delivered reminder after reboot
 
     data class Alarm(
@@ -78,8 +79,20 @@ object AlarmStore {
         prefs(context).edit().putString(KEY_ITEMS, arr.toString()).apply()
     }
 
-    // ── Reminder fired guards ──────────────────────────────────────────────
+    // ── Alarm sound choice ─────────────────────────────────────────────────
 
+    @Synchronized
+    fun getAlarmSoundUri(context: Context): String? =
+        prefs(context).getString(KEY_SOUND_URI, null)
+
+    @Synchronized
+    fun setAlarmSoundUri(context: Context, uri: String?) {
+        val editor = prefs(context).edit()
+        if (uri.isNullOrEmpty()) editor.remove(KEY_SOUND_URI) else editor.putString(KEY_SOUND_URI, uri)
+        editor.apply()
+    }
+
+    // ── Reminder fired guards ──────────────────────────────────────────────
     @Synchronized
     fun isReminderFired(context: Context, timestamp: Long): Boolean =
         prefs(context).getString(KEY_REMIND_FIRED, null)?.split(",")?.contains(timestamp.toString()) == true

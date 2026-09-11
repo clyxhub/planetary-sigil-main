@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Geolocation } from '@capacitor/geolocation';
 import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
 import {
@@ -312,6 +312,15 @@ function removeDuplicateLetters(text) {
   }).join("");
 }
 
+function escapeXml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 const THEMES = [
   { id: "night", label: "Midnight", glow: "rgba(139,92,246,0.2)" },
   { id: "violet", label: "Violet", glow: "rgba(139,92,246,0.28)" },
@@ -377,6 +386,8 @@ export default function ChaosSigilForge() {
   const [leadMinutes, setLeadMinutes] = useState(() => loadPersist("ps_lead", 5));
   const [theme, setTheme] = useState(() => loadPersist("ps_theme", "night"));
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [alarmSound, setAlarmSound] = useState({ uri: "", name: "Default alarm" });
+  const [soundModalOpen, setSoundModalOpen] = useState(false);
   const timersRef = useRef([]);
   const webTimersRef = useRef({});
 
@@ -391,11 +402,12 @@ export default function ChaosSigilForge() {
   useEffect(() => savePersist("ps_lead", leadMinutes), [leadMinutes]);
   useEffect(() => savePersist("ps_theme", theme), [theme]);
 
-  // On launch, re-assert any persisted future alarms with the native layer.
-  // The OS alarms themselves are owned and persisted natively (AlarmStore +
-  // BootReceiver), so this only reconciles the bridge after an app restart; it
-  // is idempotent and never creates duplicates. Past entries are pruned.
-  useEffect(() => {
+  // Re-assert every persisted future alarm with the native layer. Idempotent:
+  // native AlarmStore upserts by timestamp. Called on mount and whenever the app
+  // returns to the foreground — the latter is what upgrades already-scheduled
+  // reminders/alarms to exact scheduling after the user grants the
+  // "Alarms & reminders" permission in Settings.
+  const rescheduleFutureAlarms = useCallback(() => {
     if (!(typeof window !== "undefined" && window.Capacitor)) return;
     const nowMs = Date.now();
     const future = scheduledAlarms.filter((a) => a.ts > nowMs);
@@ -409,7 +421,22 @@ export default function ChaosSigilForge() {
       }).catch(console.error);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledAlarms, leadMinutes]);
+
+  useEffect(() => {
+    rescheduleFutureAlarms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        rescheduleFutureAlarms();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [rescheduleFutureAlarms]);
 
   // On open (native APK), check + request notification access so alarms can work.
   useEffect(() => {
@@ -486,6 +513,47 @@ export default function ChaosSigilForge() {
     Notification.requestPermission().then((perm) => setNotifPermission(perm));
   };
 
+  // ── Alarm sound selection ────────────────────────────────────────────────
+  const loadAlarmSound = useCallback(async () => {
+    if (!(typeof window !== "undefined" && window.Capacitor)) return;
+    try {
+      const r = await PlanetaryAlarm.getAlarmSound();
+      setAlarmSound({ uri: r.uri || "", name: r.name || "Default alarm" });
+    } catch (e) { /* ignore */ }
+  }, []);
+
+  const chooseSystemSound = async () => {
+    try {
+      const r = await PlanetaryAlarm.pickAlarmSound();
+      setAlarmSound({ uri: r.uri || "", name: r.name || "Default alarm" });
+    } catch (e) { /* cancelled */ }
+  };
+
+  const chooseSoundFile = async () => {
+    try {
+      const r = await PlanetaryAlarm.pickAlarmSoundFile();
+      setAlarmSound({ uri: r.uri || "", name: r.name || "Custom sound" });
+    } catch (e) { /* cancelled */ }
+  };
+
+  const useDefaultSound = async () => {
+    try {
+      const r = await PlanetaryAlarm.setDefaultAlarmSound();
+      setAlarmSound({ uri: r.uri || "", name: r.name || "Default alarm" });
+    } catch (e) { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (!(typeof window !== "undefined" && window.Capacitor)) return;
+    loadAlarmSound();
+    // Ask for full-screen-intent permission (Android 14+) so the alarm screen
+    // can wake the device; harmless no-op on older versions.
+    PlanetaryAlarm.hasFullScreenIntentPermission()
+      .then((r) => { if (r && !r.value) PlanetaryAlarm.requestFullScreenIntentPermission(); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleNotify = async (hour) => {
     const ts = hour.start.getTime();
     const isAdding = !notifyKeys.has(hour.key);
@@ -507,10 +575,12 @@ export default function ChaosSigilForge() {
     if (typeof window !== 'undefined' && window.Capacitor) {
       try {
         if (isAdding) {
-          if (await PlanetaryAlarm.hasExactAlarmPermission && !(await PlanetaryAlarm.hasExactAlarmPermission()).value) {
-            await PlanetaryAlarm.requestExactAlarmPermission();
-          }
+          try {
+            const hasExact = await PlanetaryAlarm.hasExactAlarmPermission();
+            if (hasExact && !hasExact.value) await PlanetaryAlarm.requestExactAlarmPermission();
+          } catch (e) { /* ignore */ }
           await PlanetaryAlarm.schedule({ ...opts, leadMinutes });
+          setSoundModalOpen(true);
         } else {
           await PlanetaryAlarm.cancel(opts);
         }
@@ -631,7 +701,8 @@ export default function ChaosSigilForge() {
 
   const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
-  <rect width="360" height="360" fill="black"/>
+  <rect width="360" height="360" fill="#ffffff"/>
+  ${buildSealSvg()}
   <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
     <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
@@ -691,7 +762,7 @@ export default function ChaosSigilForge() {
 
   // ── Quick on-device download test (no sigil generation needed) ────────
   const testDownload = () => {
-    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"><rect width="360" height="360" fill="black"/><circle cx="180" cy="180" r="120" fill="none" stroke="${planet.color}" stroke-width="12"/></svg>`;
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"><rect width="360" height="360" fill="#ffffff"/><circle cx="180" cy="180" r="120" fill="none" stroke="${planet.color}" stroke-width="12"/></svg>`;
     const fileName = `sigil-test-${Date.now()}.png`;
     if (isNative) {
       const canvas = document.createElement('canvas');
@@ -758,7 +829,7 @@ export default function ChaosSigilForge() {
           textAnchor="middle" dominantBaseline="central"
           fontSize="240"
           fill={planet.color}
-          opacity="0.13"
+          opacity="0.22"
         >
           {corr.sign}
         </text>
@@ -791,6 +862,33 @@ export default function ChaosSigilForge() {
       )}
     </>
   );
+
+  // Plain-SVG mirror of buildSeal() so the exported file contains the full
+  // design (planet sign, circles, archangel/intelligence/spirit/divine names),
+  // not just the sigil path.
+  const buildSealSvg = () => {
+    let s = "";
+    if (showSign && corr.sign) {
+      s += `<text x="180" y="180" text-anchor="middle" dominant-baseline="central" font-size="240" fill="${planet.color}" opacity="0.22">${escapeXml(corr.sign)}</text>`;
+    }
+    if (showArchangel || showIntelligence || showSpirit || showDivineName) {
+      s += `<circle cx="180" cy="180" r="168" fill="none" stroke="${planet.color}" stroke-width="1.4" opacity="0.55"/>`;
+      s += `<circle cx="180" cy="180" r="146" fill="none" stroke="${planet.color}" stroke-width="0.8" opacity="0.35"/>`;
+      if (showArchangel) {
+        s += `<text x="180" y="46" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}">${escapeXml(archText)}</text>`;
+      }
+      if (showIntelligence) {
+        s += `<text x="326" y="180" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}" transform="rotate(90 326 180)">${escapeXml(intelText)}</text>`;
+      }
+      if (showSpirit) {
+        s += `<text x="180" y="330" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}">${escapeXml(spiritText)}</text>`;
+      }
+      if (showDivineName) {
+        s += `<text x="34" y="180" text-anchor="middle" fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${sealNameSize}" transform="rotate(-90 34 180)">${escapeXml(divineText)}</text>`;
+      }
+    }
+    return s;
+  };
 
   const activeTheme = THEMES.find((t) => t.id === theme) || THEMES[0];
 
@@ -1618,7 +1716,7 @@ export default function ChaosSigilForge() {
               <h2 className="text-2xl font-black">Final Sigil Output</h2>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-black/60 min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
+            <div className="rounded-3xl border border-black/10 bg-white min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
                 {buildSeal()}
                 <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
@@ -1724,7 +1822,7 @@ export default function ChaosSigilForge() {
                 </button>
 
                 <div
-                  className="rounded-3xl border border-white/10 bg-black p-8 select-none cursor-pointer relative"
+                  className="rounded-3xl border border-black/10 bg-white p-8 select-none cursor-pointer relative"
                   onPointerDown={startSigilPress}
                   onPointerUp={cancelSigilPress}
                   onPointerLeave={cancelSigilPress}
@@ -1779,6 +1877,51 @@ export default function ChaosSigilForge() {
           )}
         </div>
       </div>
+
+      {soundModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setSoundModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-zinc-950 p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Bell className="text-green-300" size={18} />
+              <h3 className="font-black text-lg">Alarm sound</h3>
+            </div>
+            <p className="text-xs text-zinc-400">
+              This is the sound that rings at the planetary hour. Current:{" "}
+              <span className="text-zinc-200 font-bold">{alarmSound.name}</span>
+            </p>
+            <button
+              onClick={chooseSystemSound}
+              className="w-full rounded-2xl py-3 border border-green-500/30 bg-green-500/10 text-green-100 text-sm font-bold hover:bg-green-500/20 transition-all"
+            >
+              Choose system alarm sound
+            </button>
+            <button
+              onClick={chooseSoundFile}
+              className="w-full rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-sm font-bold hover:bg-white/[0.06] transition-all"
+            >
+              Choose audio file from phone
+            </button>
+            <button
+              onClick={useDefaultSound}
+              className="w-full rounded-2xl py-3 border border-white/10 bg-white/[0.03] text-sm font-bold hover:bg-white/[0.06] transition-all"
+            >
+              Use default alarm sound
+            </button>
+            <button
+              onClick={() => setSoundModalOpen(false)}
+              className="w-full rounded-2xl py-3 bg-white text-black text-sm font-black hover:opacity-90 transition-all"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

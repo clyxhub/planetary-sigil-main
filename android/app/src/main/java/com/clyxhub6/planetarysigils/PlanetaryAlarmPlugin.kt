@@ -9,17 +9,21 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
@@ -127,6 +131,119 @@ class PlanetaryAlarmPlugin : Plugin() {
             })
         }
         val ret = JSObject(); ret.put("value", true); call.resolve(ret)
+    }
+
+    // ── Full-screen intent permission (API 34+) ────────────────────────────
+    // The alarm screen is launched via a full-screen intent. On Android 14,
+    // non-alarm apps can have USE_FULL_SCREEN_INTENT revoked, so we surface a
+    // way to check and send the user to the grant screen.
+
+    @PluginMethod
+    fun hasFullScreenIntentPermission(call: PluginCall) {
+        val granted = if (Build.VERSION.SDK_INT >= 34) {
+            context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+        } else true
+        val ret = JSObject(); ret.put("value", granted); call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun requestFullScreenIntentPermission(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= 34 &&
+            !context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not open full-screen intent settings", e)
+            }
+        }
+        val ret = JSObject(); ret.put("value", true); call.resolve(ret)
+    }
+
+    // ── Alarm sound selection ──────────────────────────────────────────────
+
+    @PluginMethod
+    fun getAlarmSound(call: PluginCall) {
+        val ret = JSObject()
+        val uri = AlarmStore.getAlarmSoundUri(context)
+        ret.put("uri", uri ?: "")
+        ret.put("name", soundName(context, uri))
+        call.resolve(ret)
+    }
+
+    /** Opens the system alarm-sound picker (ringtone list + installed sounds). */
+    @PluginMethod
+    fun pickAlarmSound(call: PluginCall) {
+        val existing = AlarmStore.getAlarmSoundUri(context)?.let { Uri.parse(it) }
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Choose alarm sound")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            if (existing != null) putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+        }
+        startActivityForResult(call, intent, "alarmSoundPicked")
+    }
+
+    @ActivityCallback
+    private fun alarmSoundPicked(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        if (result.resultCode != android.app.Activity.RESULT_OK) { call.reject("Cancelled"); return }
+        val uri: Uri? = result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        AlarmStore.setAlarmSoundUri(context, uri?.toString())
+        val ret = JSObject()
+        ret.put("uri", uri?.toString() ?: "")
+        ret.put("name", soundName(context, uri?.toString()))
+        call.resolve(ret)
+    }
+
+    /** Opens the document picker so the user can choose an audio file. */
+    @PluginMethod
+    fun pickAlarmSoundFile(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(call, intent, "alarmSoundFilePicked")
+    }
+
+    @ActivityCallback
+    private fun alarmSoundFilePicked(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        if (result.resultCode != android.app.Activity.RESULT_OK) { call.reject("Cancelled"); return }
+        val uri: Uri? = result.data?.data
+        if (uri == null) { call.reject("No file selected"); return }
+        try {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not persist URI permission (sound may not survive reboot)", e)
+        }
+        AlarmStore.setAlarmSoundUri(context, uri.toString())
+        val ret = JSObject()
+        ret.put("uri", uri.toString())
+        ret.put("name", soundName(context, uri.toString()))
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun setDefaultAlarmSound(call: PluginCall) {
+        AlarmStore.setAlarmSoundUri(context, null)
+        val ret = JSObject()
+        ret.put("uri", "")
+        ret.put("name", soundName(context, null))
+        call.resolve(ret)
+    }
+
+    private fun soundName(context: Context, uriString: String?): String {
+        val uri = uriString?.let { Uri.parse(it) } ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        return try {
+            RingtoneManager.getRingtone(context, uri)?.getTitle(context) ?: "Default alarm"
+        } catch (e: Exception) {
+            "Custom sound"
+        }
     }
 
     // ── Schedule / Cancel ──────────────────────────────────────────────────
@@ -252,7 +369,24 @@ class PlanetaryAlarmPlugin : Plugin() {
                 Intent(context, AlarmReceiver::class.java).apply {
                     putExtra("planetName", planetName); putExtra("timestamp", timestamp)
                 }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            scheduleExact(context, timestamp, pi, "Alarm", "$planetName @ $timestamp")
+            // setAlarmClock is delivered exactly and is exempt from Doze; it is
+            // the strongest scheduling primitive for a user-visible alarm.
+            scheduleAlarmClock(context, timestamp, pi, "$planetName @ $timestamp")
+        }
+
+        private fun scheduleAlarmClock(context: Context, fireAt: Long, operation: PendingIntent, detail: String) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            try {
+                val showIntent = PendingIntent.getActivity(context, requestCode(fireAt, ALARM_SEED + 9),
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showIntent), operation)
+                Log.d(TAG, "AlarmClock: $detail")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "AlarmClock denied, falling back to exact: $detail")
+                scheduleExact(context, fireAt, operation, "Alarm", detail)
+            }
         }
 
         fun scheduleReminder(context: Context, timestamp: Long, planetName: String, leadMinutes: Long) {

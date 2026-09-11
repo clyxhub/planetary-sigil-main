@@ -8,6 +8,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Vibrator
@@ -49,6 +50,10 @@ class AlarmActivity : AppCompatActivity() {
         // Dismiss the backup notification that AlarmReceiver posted
         getSystemService(NotificationManager::class.java).cancel(timestamp.toInt())
 
+        // The full-screen activity now owns the audio; stop the foreground
+        // backup service so the alarm does not play twice.
+        try { stopService(Intent(this, AlarmService::class.java)) } catch (_: Exception) {}
+
         // Start ringtone + vibration
         startAlarmSound()
 
@@ -68,7 +73,9 @@ class AlarmActivity : AppCompatActivity() {
 
     private fun startAlarmSound() {
         try {
-            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val chosen = AlarmStore.getAlarmSoundUri(this)?.let { Uri.parse(it) }
+            val ringtoneUri = chosen
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
