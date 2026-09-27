@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Geolocation } from '@capacitor/geolocation';
 import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
+import { PLANET_SEALS } from './src/planetarySeals';
 import {
   Menu,
   X,
   Palette,
-  BookOpen,
   Sparkles,
   Wand2,
   Orbit,
@@ -347,6 +347,28 @@ function savePersist(key, value) {
   } catch (e) { /* ignore */ }
 }
 
+// Ink used for the sigil stroke, ring names and planet sign on the sigil card.
+// The Moon's silver (#e5e7eb) is almost invisible against the white card, so on
+// light backgrounds it is stepped down to a darker silver; on the black card
+// every planet keeps its own colour.
+const MOON_COLOR = "#e5e7eb";
+const MOON_DARK_SILVER = "#9aa1a9";
+
+function sigilInk(hex, onDark) {
+  if (onDark) return hex;
+  return String(hex).toLowerCase() === MOON_COLOR ? MOON_DARK_SILVER : hex;
+}
+
+// The seal watermark is filled at low opacity; darkening the hue keeps it
+// readable on the white card. On the black card the raw colour reads better.
+function sealInk(hex, onDark) {
+  if (onDark) return hex;
+  const n = parseInt(String(hex).replace("#", ""), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const k = 0.42;
+  return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`;
+}
+
 export default function ChaosSigilForge() {
   const [planet, setPlanet] = useState(PLANETS[0]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -360,7 +382,6 @@ export default function ChaosSigilForge() {
   const [showIntelligence, setShowIntelligence] = useState(false);
   const [showSpirit, setShowSpirit] = useState(false);
   const [showDivineName, setShowDivineName] = useState(false);
-  const [showCorrLang, setShowCorrLang] = useState("en"); // en | he
   const longPressTimerRef = useRef(null);
   const longPressStartRef = useRef(null);
   const [removeVowels, setRemoveVowels] = useState(true);
@@ -385,6 +406,7 @@ export default function ChaosSigilForge() {
   );
   const [leadMinutes, setLeadMinutes] = useState(() => loadPersist("ps_lead", 5));
   const [theme, setTheme] = useState(() => loadPersist("ps_theme", "night"));
+  const [cardBg, setCardBg] = useState(() => loadPersist("ps_cardbg", "white")); // white | black
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [alarmSound, setAlarmSound] = useState({ uri: "", name: "Default alarm" });
   const [soundModalOpen, setSoundModalOpen] = useState(false);
@@ -396,12 +418,14 @@ export default function ChaosSigilForge() {
     () => new Set(scheduledAlarms.map((a) => String(a.ts))),
     [scheduledAlarms]
   );
+  const darkCard = cardBg === "black";
 
   // Persist settings so they survive closing/reopening the app.
   useEffect(() => savePersist("ps_coords", coords), [coords]);
   useEffect(() => savePersist("ps_alarms", scheduledAlarms), [scheduledAlarms]);
   useEffect(() => savePersist("ps_lead", leadMinutes), [leadMinutes]);
   useEffect(() => savePersist("ps_theme", theme), [theme]);
+  useEffect(() => savePersist("ps_cardbg", cardBg), [cardBg]);
 
   // Apply the theme at the document root so it is global (body, overlays,
   // menus) rather than only on the main page's wrapper div.
@@ -710,10 +734,10 @@ export default function ChaosSigilForge() {
 
   const downloadSigil = (format) => {
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360">
-  <rect width="360" height="360" fill="#ffffff"/>
+  <rect width="360" height="360" fill="${darkCard ? "#000000" : "#ffffff"}"/>
   ${buildSealSvg()}
   <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
-    <path d="${pathData}" fill="none" stroke="${planet.color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${pathData}" fill="none" stroke="${inkColor}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>`;
     const ext = format === 'svg' ? 'svg' : format === 'jpeg' ? 'jpg' : 'png';
@@ -794,32 +818,18 @@ export default function ChaosSigilForge() {
   };
 
   const corr = PLANETAL_CORRESPONDENCES[planet.name] || {};
-  const langText = (o) =>
-    showCorrLang === "he" ? (o && o.he) || (o && o.en) : (o && o.en) || (o && o.he);
+  const langText = (o) => (o && o.en) || (o && o.he);
   const archText = langText(corr.archangel);
   const intelText = langText(corr.intelligence);
   const spiritText = langText(corr.spirit);
   const divineText = langText(corr.divine);
-  const sealWording = showCorrLang === "he";
-  const ringNameSize = sealWording ? 13 : 15;
+  const ringNameSize = 15;
 
-  // "Agrippa" planetary signature: connect the kamea cells in numeric order
-  // 1..n^2 — the classic figure derived from the planet's magic square.
-  const kameaSignature = (() => {
-    const size = planet.size;
-    const cell = 360 / size;
-    const pos = {};
-    planet.grid.forEach((row, r) => row.forEach((v, c) => {
-      pos[v] = { x: c * cell + cell / 2, y: r * cell + cell / 2 };
-    }));
-    let d = "";
-    for (let n = 1; n <= size * size; n++) {
-      const p = pos[n];
-      if (!p) continue;
-      d += (d === "" ? "M" : "L") + ` ${p.x} ${p.y} `;
-    }
-    return d.trim();
-  })();
+  // Authentic planetary seal (Agrippa) drawn as a faint figure behind the sigil.
+  const sealPath = PLANET_SEALS[planet.name] || "";
+  const sealColor = sealInk(planet.color, darkCard); // seal watermark
+  const inkColor = sigilInk(planet.color, darkCard); // sigil, names, sign, rings
+  const cardSurface = darkCard ? "bg-black border-white/20" : "bg-white border-black/10";
 
   // Ring guide paths at radius 157, midway between the r=168 and r=146 rings,
   // used to curve the inscribed names inside the annulus.
@@ -830,8 +840,8 @@ export default function ChaosSigilForge() {
     left: "M 180 337 A 157 157 0 0 1 180 23",
   };
 
-  // Talismanic seal: Agrippa kamea signature behind, ring, curved inscriptions,
-  // and the planet sign moved to the top-left corner.
+  // Talismanic seal: authentic Agrippa planetary seal behind, ring, curved
+  // inscriptions, and the planet sign moved to the top-left corner.
   const buildSeal = (uid = "a") => (
     <>
       <defs>
@@ -841,43 +851,43 @@ export default function ChaosSigilForge() {
         <path id={`sealArcLeft-${uid}`} d={RING_PATHS.left} />
       </defs>
       <g transform="translate(180 180) scale(0.82) translate(-180 -180)">
-        <path d={kameaSignature} fill="none" stroke={planet.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.14" />
+        <path d={sealPath} fill={sealColor} fillRule="evenodd" opacity="0.16" />
       </g>
       {(showArchangel || showIntelligence || showSpirit || showDivineName) && (
         <>
-          <circle cx="180" cy="180" r="168" fill="none" stroke={planet.color} strokeWidth="1.4" opacity="0.55" />
-          <circle cx="180" cy="180" r="146" fill="none" stroke={planet.color} strokeWidth="0.8" opacity="0.35" />
+          <circle cx="180" cy="180" r="168" fill="none" stroke={inkColor} strokeWidth="1.4" opacity="0.55" />
+          <circle cx="180" cy="180" r="146" fill="none" stroke={inkColor} strokeWidth="0.8" opacity="0.35" />
           {showArchangel && (
-            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+            <text fill={inkColor} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
               <textPath href={`#sealArcTop-${uid}`} startOffset="50%" textAnchor="middle">{archText}</textPath>
             </text>
           )}
           {showIntelligence && (
-            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+            <text fill={inkColor} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
               <textPath href={`#sealArcRight-${uid}`} startOffset="50%" textAnchor="middle">{intelText}</textPath>
             </text>
           )}
           {showSpirit && (
-            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+            <text fill={inkColor} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
               <textPath href={`#sealArcBottom-${uid}`} startOffset="50%" textAnchor="middle">{spiritText}</textPath>
             </text>
           )}
           {showDivineName && (
-            <text fill={planet.color} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
+            <text fill={inkColor} fillOpacity="0.95" fontWeight="bold" fontSize={ringNameSize}>
               <textPath href={`#sealArcLeft-${uid}`} startOffset="50%" textAnchor="middle">{divineText}</textPath>
             </text>
           )}
         </>
       )}
       {showSign && corr.sign && (
-        <text x="40" y="52" textAnchor="middle" dominantBaseline="central" fontSize="40" fill={planet.color} opacity="0.95">{corr.sign}</text>
+        <text x="40" y="52" textAnchor="middle" dominantBaseline="central" fontSize="40" fill={inkColor} opacity="0.95">{corr.sign}</text>
       )}
     </>
   );
 
   // Plain-SVG mirror of buildSeal() for export (single document, so no uid).
   const buildSealSvg = () => {
-    const ring = `fill="${planet.color}" font-weight="bold" font-family="sans-serif" font-size="${ringNameSize}"`;
+    const ring = `fill="${inkColor}" font-weight="bold" font-family="sans-serif" font-size="${ringNameSize}"`;
     let s = "";
     s += `<defs>`;
     s += `<path id="sealArcTop" d="${RING_PATHS.top}"/>`;
@@ -885,17 +895,17 @@ export default function ChaosSigilForge() {
     s += `<path id="sealArcRight" d="${RING_PATHS.right}"/>`;
     s += `<path id="sealArcLeft" d="${RING_PATHS.left}"/>`;
     s += `</defs>`;
-    s += `<g transform="translate(180 180) scale(0.82) translate(-180 -180)"><path d="${kameaSignature}" fill="none" stroke="${planet.color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.14"/></g>`;
+    s += `<g transform="translate(180 180) scale(0.82) translate(-180 -180)"><path d="${sealPath}" fill="${sealColor}" fill-rule="evenodd" opacity="0.16"/></g>`;
     if (showArchangel || showIntelligence || showSpirit || showDivineName) {
-      s += `<circle cx="180" cy="180" r="168" fill="none" stroke="${planet.color}" stroke-width="1.4" opacity="0.55"/>`;
-      s += `<circle cx="180" cy="180" r="146" fill="none" stroke="${planet.color}" stroke-width="0.8" opacity="0.35"/>`;
+      s += `<circle cx="180" cy="180" r="168" fill="none" stroke="${inkColor}" stroke-width="1.4" opacity="0.55"/>`;
+      s += `<circle cx="180" cy="180" r="146" fill="none" stroke="${inkColor}" stroke-width="0.8" opacity="0.35"/>`;
       if (showArchangel) s += `<text ${ring}><textPath href="#sealArcTop" startOffset="50%" text-anchor="middle">${escapeXml(archText)}</textPath></text>`;
       if (showIntelligence) s += `<text ${ring}><textPath href="#sealArcRight" startOffset="50%" text-anchor="middle">${escapeXml(intelText)}</textPath></text>`;
       if (showSpirit) s += `<text ${ring}><textPath href="#sealArcBottom" startOffset="50%" text-anchor="middle">${escapeXml(spiritText)}</textPath></text>`;
       if (showDivineName) s += `<text ${ring}><textPath href="#sealArcLeft" startOffset="50%" text-anchor="middle">${escapeXml(divineText)}</textPath></text>`;
     }
     if (showSign && corr.sign) {
-      s += `<text x="40" y="52" text-anchor="middle" dominant-baseline="central" font-size="40" fill="${planet.color}" opacity="0.95">${escapeXml(corr.sign)}</text>`;
+      s += `<text x="40" y="52" text-anchor="middle" dominant-baseline="central" font-size="40" fill="${inkColor}" opacity="0.95">${escapeXml(corr.sign)}</text>`;
     }
     return s;
   };
@@ -1459,10 +1469,6 @@ export default function ChaosSigilForge() {
                         })}
                       </div>
                     </div>
-
-                    <p className="text-xs text-zinc-500">
-                      Reminders fire while this app is open. Once packaged as an Android app, hour reminders become real scheduled OS notifications that work even if the app is closed.
-                    </p>
                   </>
                 )}
               </div>
@@ -1724,16 +1730,32 @@ export default function ChaosSigilForge() {
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="text-yellow-300" size={18} />
               <h2 className="text-2xl font-black">Final Sigil Output</h2>
+              <div className="ml-auto flex gap-1">
+                <button
+                  onClick={() => setCardBg('white')}
+                  aria-label="White sigil background"
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${!darkCard ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                >
+                  White
+                </button>
+                <button
+                  onClick={() => setCardBg('black')}
+                  aria-label="Black sigil background"
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${darkCard ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
+                >
+                  Black
+                </button>
+              </div>
             </div>
 
-            <div className="rounded-3xl border border-black/10 bg-white min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative" onClick={() => setSigilModalOpen(true)}>
+            <div className={`rounded-3xl border ${cardSurface} min-h-[280px] flex items-center justify-center p-6 overflow-hidden cursor-pointer group relative`} onClick={() => setSigilModalOpen(true)}>
               <svg viewBox="0 0 360 360" className="w-full max-w-[280px] aspect-square">
                 {buildSeal("out")}
                 <g transform="translate(180 180) scale(0.5) translate(-180 -180)">
                   <path
                     d={pathData}
                     fill="none"
-                    stroke={planet.color}
+                    stroke={inkColor}
                     strokeWidth={strokeWidth}
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -1748,23 +1770,6 @@ export default function ChaosSigilForge() {
             </div>
 
             <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-500 grow">Wording</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setShowCorrLang('en')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${showCorrLang === 'en' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
-                  >
-                    EN
-                  </button>
-                  <button
-                    onClick={() => setShowCorrLang('he')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${showCorrLang === 'he' ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-white/10 bg-white/[0.03] text-zinc-500'}`}
-                  >
-                    עברית
-                  </button>
-                </div>
-              </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-zinc-500 grow">Planet Sign</span>
                 <button
@@ -1801,7 +1806,7 @@ export default function ChaosSigilForge() {
                 {showArchangel && <div className="flex justify-between gap-3"><span className="text-zinc-500">Archangel</span><span className="text-white text-right">{archText}</span></div>}
                 {showIntelligence && <div className="flex justify-between gap-3"><span className="text-zinc-500">Intelligence</span><span className="text-white text-right">{intelText}</span></div>}
                 {showSpirit && <div className="flex justify-between gap-3"><span className="text-zinc-500">Spirit</span><span className="text-white text-right">{spiritText}</span></div>}
-                {showDivineName && <div className="flex justify-between gap-3"><span className="text-zinc-500">Divine Name</span><span className="text-zinc-200 text-right" dir={showCorrLang === 'he' ? 'rtl' : undefined}>{divineText}</span></div>}
+                {showDivineName && <div className="flex justify-between gap-3"><span className="text-zinc-500">Divine Name</span><span className="text-zinc-200 text-right">{divineText}</span></div>}
               </div>
             ) : null}
 
@@ -1828,7 +1833,7 @@ export default function ChaosSigilForge() {
                 </button>
 
                 <div
-                  className="rounded-3xl border border-black/10 bg-white p-8 select-none cursor-pointer relative"
+                  className={`rounded-3xl border ${cardSurface} p-8 select-none cursor-pointer relative`}
                   onPointerDown={startSigilPress}
                   onPointerUp={cancelSigilPress}
                   onPointerLeave={cancelSigilPress}
@@ -1841,7 +1846,7 @@ export default function ChaosSigilForge() {
                       <path
                         d={pathData}
                         fill="none"
-                        stroke={planet.color}
+                        stroke={inkColor}
                         strokeWidth={strokeWidth * 1.5}
                         strokeLinecap="round"
                         strokeLinejoin="round"
