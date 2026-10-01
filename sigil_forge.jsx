@@ -148,7 +148,7 @@ const PLANETAL_CORRESPONDENCES = {
   Venus: {
     sign: "♀",
     archangel: { en: "Haniel", he: "חניאל" },
-    intelligence: { en: "Hagiel", he: "הגיאל" },
+    intelligence: { en: "Hegiel", he: "הגיאל" },
     spirit: { en: "Kedemel", he: "קדמאל" },
     divine: { en: "YHVH Tzabaoth", he: "יהוה צבאות" },
   },
@@ -163,7 +163,7 @@ const PLANETAL_CORRESPONDENCES = {
     sign: "☾",
     archangel: { en: "Gabriel", he: "גבריאל" },
     intelligence: { en: "Malkah Be-Tarshishim", he: "מלכה בתרשישים" },
-    spirit: { en: "Schad Barschemoth", he: "שד ברשמות" },
+    spirit: { en: "Hasmodai", he: "שד ברשמות" },
     divine: { en: "Shaddai El Chai", he: "שדי אל חי" },
   },
 };

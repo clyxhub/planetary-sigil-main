@@ -86,7 +86,7 @@ export const PRACTICE_GUIDE = [
     ['Jupiter', 'El', 'Sachiel', 'Iophiel', 'Hismael'],
     ['Mars', 'Elohim Gibor', 'Camael', 'Graphiel', 'Bartzabel'],
     ['Sun', 'YHVH Eloah Ve-Daath', 'Michael', 'Nachiel', 'Sorath'],
-    ['Venus', 'YHVH Tzabaoth', 'Haniel', 'Hagiel', 'Qedemel'],
+    ['Venus', 'YHVH Tzabaoth', 'Haniel', 'Hegiel', 'Qedemel'],
     ['Mercury', 'Elohim Tzabaoth', 'Raphael', 'Tiriel', 'Taphthartharath'],
     ['Moon', 'Shaddai El Chai', 'Gabriel', 'Malkah be Tarshishim', 'Hasmodai'],
   ] },
