@@ -1,8 +1,5 @@
 package com.clyxhub6.planetarysigils
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -15,16 +12,14 @@ import android.os.IBinder
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 
 /**
  * Foreground service that provides guaranteed audible + vibrating alarm output.
  *
- * The AlarmReceiver starts this service after posting the full-screen
- * notification. Because it is foreground, the audio keeps playing even if the
- * app process was killed, so the alarm cannot be silently dropped. The channel
- * is deliberately the same ALARM_CHANNEL_ID created by PlanetaryAlarmPlugin so
- * there is exactly one high-importance alarm channel.
+ * It reuses the single alarm notification built by AlarmNotifications (with its
+ * Snooze/Dismiss actions) via startForeground, so the heads-up shown while the
+ * phone is in use always carries working buttons rather than a separate,
+ * action-less foreground notification.
  */
 class AlarmService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -34,27 +29,20 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val planetName = intent?.getStringExtra("planetName") ?: "Unknown"
+        val timestamp = intent?.getLongExtra("timestamp", 0L) ?: 0L
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(
-                    PlanetaryAlarmPlugin.ALARM_CHANNEL_ID,
-                    "Planetary Alarms",
-                    NotificationManager.IMPORTANCE_HIGH
-                )
+        AlarmNotifications.ensureChannels(this)
+
+        // Reuse the alarm notification so the heads-up (and its actions) is the
+        // same one the receiver posted.
+        try {
+            startForeground(
+                AlarmNotifications.ALARM_NOTIFICATION_ID,
+                AlarmNotifications.buildAlarmNotification(this, planetName, timestamp)
             )
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not post foreground alarm notification", e)
         }
-
-        val notification: Notification = NotificationCompat.Builder(this, PlanetaryAlarmPlugin.ALARM_CHANNEL_ID)
-            .setContentTitle("Planetary Hour: $planetName")
-            .setContentText("The hour of $planetName has begun.")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setOngoing(true)
-            .build()
-
-        startForeground(1001, notification)
 
         // Play the chosen alarm sound (looping) at alarm volume; fall back to the
         // system default alarm tone.
@@ -63,7 +51,7 @@ class AlarmService : Service() {
             val alarmUri = chosen
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            
+
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@AlarmService, alarmUri)
                 setAudioAttributes(

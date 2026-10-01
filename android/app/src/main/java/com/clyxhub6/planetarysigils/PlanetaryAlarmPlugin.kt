@@ -62,22 +62,9 @@ class PlanetaryAlarmPlugin : Plugin() {
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(
-                NotificationChannel(ALARM_CHANNEL_ID, "Planetary Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Full-screen alarms for planetary hours"
-                    enableVibration(true)
-                    setBypassDnd(true)
-                }
-            )
-            manager.createNotificationChannel(
-                NotificationChannel(REMINDER_CHANNEL_ID, "Planetary Hour Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Heads-up notification before a planetary hour"
-                    enableVibration(true)
-                }
-            )
-        }
+        // All channel setup lives in AlarmNotifications so the receiver/service
+        // and the plugin always agree on importance, sound and vibration.
+        AlarmNotifications.ensureChannels(context)
     }
 
     // ── Notification Permission (API 33+) ──────────────────────────────────
@@ -347,7 +334,10 @@ class PlanetaryAlarmPlugin : Plugin() {
 
     companion object {
         private const val TAG = "PlanetaryAlarm"
-        const val ALARM_CHANNEL_ID = "planetary_alarm_channel"
+        // v2: channel settings are immutable once created, so a new id is used
+        // to guarantee IMPORTANCE_HIGH + silent channel (audio is played by the
+        // service/activity) and reliable heads-up on all devices.
+        const val ALARM_CHANNEL_ID = "planetary_alarm_channel_v2"
         const val REMINDER_CHANNEL_ID = "planetary_reminder_channel"
         const val REMINDER_ACTION = "com.clyxhub6.planetarysigils.REMINDER"
         const val NOTIFICATION_CALLBACK = "notificationsGranted"
@@ -423,7 +413,7 @@ class PlanetaryAlarmPlugin : Plugin() {
                 Intent(context, ReminderReceiver::class.java).apply { action = REMINDER_ACTION; putExtra("timestamp", timestamp) },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             val nm = context.getSystemService(NotificationManager::class.java)
-            nm.cancel(timestamp.toInt())
+            nm.cancel(AlarmNotifications.ALARM_NOTIFICATION_ID)
             nm.cancel(timestamp.toInt() + 1)
         }
 

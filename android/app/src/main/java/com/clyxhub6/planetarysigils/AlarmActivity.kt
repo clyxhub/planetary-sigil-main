@@ -48,7 +48,7 @@ class AlarmActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.planetTitle).text = "$planetName Hour"
 
         // Dismiss the backup notification that AlarmReceiver posted
-        getSystemService(NotificationManager::class.java).cancel(timestamp.toInt())
+        getSystemService(NotificationManager::class.java).cancel(AlarmNotifications.ALARM_NOTIFICATION_ID)
 
         // The full-screen activity now owns the audio; stop the foreground
         // backup service so the alarm does not play twice.
