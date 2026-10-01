@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Geolocation } from '@capacitor/geolocation';
 import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
 import { PLANET_SEALS } from './src/planetarySeals';
+import { PRACTICE_GUIDE } from './src/practiceGuide';
 import {
   Menu,
   X,
@@ -367,6 +368,75 @@ function sealInk(hex, onDark) {
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   const k = 0.42;
   return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`;
+}
+
+// Styling for the Practice guide blocks (src/practiceGuide.js). Class names are
+// written out in full so Tailwind emits them.
+const GUIDE_NOTE_STYLES = {
+  bad: "border-red-500/20 bg-red-500/10 text-red-100",
+  good: "border-green-500/20 bg-green-500/10 text-green-100",
+  red: "border-red-500/20 bg-red-500/10 text-red-100",
+  cyan: "border-cyan-500/20 bg-cyan-500/10 text-cyan-100",
+  yellow: "border-yellow-500/20 bg-yellow-500/10 text-yellow-100",
+  violet: "border-violet-500/20 bg-violet-500/10 text-violet-100",
+  neutral: "border-white/10 bg-black/40 text-zinc-300",
+};
+const GUIDE_CODE_STYLES = {
+  cyan: "text-cyan-200",
+  violet: "text-violet-200",
+  yellow: "text-yellow-200",
+  green: "text-green-200",
+};
+
+function renderGuideBlock(b, i) {
+  switch (b.t) {
+    case 'h1':
+      return <h2 key={i} className="text-3xl font-black text-violet-200">{b.text}</h2>;
+    case 'h2':
+      return <h2 key={i} className="text-2xl font-black text-cyan-200 pt-2">{b.text}</h2>;
+    case 'h3':
+      return <h3 key={i} className="text-xl font-black text-white pt-2">{b.text}</h3>;
+    case 'p':
+      return <p key={i}>{b.b ? <><strong className="text-white">{b.b}</strong>{b.text ? ' ' : ''}</> : null}{b.text}</p>;
+    case 'hr':
+      return <hr key={i} className="border-white/10" />;
+    case 'ul':
+      return <ul key={i} className="space-y-2 list-disc pl-5">{b.items.map((it, j) => <li key={j}>{it}</li>)}</ul>;
+    case 'ol':
+      return <ol key={i} className="space-y-2 list-decimal pl-5">{b.items.map((it, j) => <li key={j}>{it}</li>)}</ol>;
+    case 'code':
+      return (
+        <div key={i} className={`rounded-2xl border border-white/10 bg-black/40 p-4 space-y-1 font-mono text-sm ${GUIDE_CODE_STYLES[b.tone] || 'text-cyan-200'}`}>
+          {b.lines.map((l, j) => <div key={j}>{l}</div>)}
+        </div>
+      );
+    case 'table':
+      return (
+        <div key={i} className="rounded-2xl border border-white/10 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-white/[0.04]">
+                <tr>{b.head.map((h, j) => <th key={j} className="text-left p-3 font-black text-white whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k} className="p-3 text-zinc-300 align-top">{c}</td>)}</tr>)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    case 'note': {
+      const cls = GUIDE_NOTE_STYLES[b.tone] || GUIDE_NOTE_STYLES.neutral;
+      return (
+        <div key={i} className={`rounded-2xl border p-4 ${cls}`}>
+          {b.title ? <div className="font-black mb-2">{b.title}</div> : null}
+          {b.text ? <div>{b.text}</div> : null}
+        </div>
+      );
+    }
+    default:
+      return null;
+  }
 }
 
 export default function ChaosSigilForge() {
@@ -994,263 +1064,8 @@ export default function ChaosSigilForge() {
             </div>
 
             {menuSection === 'guide' && (
-              <div className="space-y-6 text-sm leading-relaxed text-zinc-300 mt-6">
-                <h2 className="text-3xl font-black text-violet-200">Sigils & Sigil Magick</h2>
-
-                <div className="space-y-5">
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">What Is a Sigil?</h3>
-                    <div className="space-y-4">
-                      <p>
-                        A sigil is a symbol built to carry a single intention. In chaos magick, a sigil is created by taking a written statement of desire and compressing it — through letter elimination, numerology, or abstraction — into a glyph that no longer visibly resembles the original sentence.
-                      </p>
-                      <p>
-                        The word comes from the Latin <em>sigillum</em>, meaning "seal." Older magical traditions used sigils and seals engraved on metal, parchment, or talismans to represent spirits, planetary forces, or specific outcomes. Chaos magick, developed in the late 20th century by practitioners such as Austin Osman Spare and later Peter Carroll, stripped this practice of fixed belief systems and reframed it as a technology of the mind rather than a religious act.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">How Sigil Magick Works</h3>
-                    <div className="space-y-4">
-                      <p>
-                        The core theory is that the conscious mind is a bottleneck. Desires that stay conscious get filtered through doubt, contradiction, and overthinking, which weakens them. Sigil magick works by encoding a desire into an abstract symbol so it can bypass conscious resistance and lodge directly in the subconscious.
-                      </p>
-                      <p>
-                        Once the symbol is created, it is "charged" by staring at it during a state of altered focus — meditation, physical exhaustion, or trance are common routes — and then deliberately forgotten. The forgetting step matters: the belief is that a desire actively obsessed over stays tangled in conscious doubt, while one released to the subconscious can act without interference.
-                      </p>
-                      <p>
-                        None of this claims to override physical law. It is generally understood, even within chaos magick, as a form of applied psychology and focused intent — a way of clarifying what you want and committing to it below the level of constant second-guessing.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">What You Can Do With a Sigil</h3>
-                    <div className="space-y-4">
-                      <p>
-                        Sigils can be built around almost any single, clearly stated intention: confidence before an event, focus during a hard project, courage to have a difficult conversation, protection over a space, or emotional steadiness during a hard season. Because a sigil is abstract, it works best when the intention behind it is specific and honest rather than vague.
-                      </p>
-                      <p>
-                        Practitioners typically keep a sigil private, place it somewhere it will be seen without being consciously studied (a wall, a journal, a phone background), or destroy it right after charging to symbolize release.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Planetary Magick</h3>
-                    <div className="space-y-4">
-                      <p>
-                        Planetary magick is older than chaos magick and comes from Hermetic and astrological traditions. Each classical planet — Saturn, Jupiter, Mars, the Sun, Venus, Mercury, and the Moon — is treated as a symbolic force with its own domain: Saturn governs discipline and boundaries, Jupiter governs growth and abundance, Mars governs action and drive, the Sun governs vitality and identity, Venus governs love and harmony, Mercury governs communication and thought, and the Moon governs emotion and intuition.
-                      </p>
-                      <p>
-                        Working "with" a planet means aligning an intention to the force whose domain matches it — using Mars for a fitness goal, Mercury for an exam, or the Moon for emotional healing, for example — rather than treating the planets as gods to be worshipped.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Planetary Hours</h3>
-                    <div className="space-y-4">
-                      <p>
-                        Planetary hours are a timing system built on the same logic as planetary magick. Each day is split into 24 unequal hours — 12 running from sunrise to sunset, 12 from sunset to sunrise — and each one is ruled by one of the seven classical planets in a fixed rotating order. Because the length of daylight changes with the seasons, these "hours" stretch and shrink throughout the year and aren't the same as clock hours.
-                      </p>
-                      <p>
-                        The influence of an hour is understood the same way as the influence of a planet itself: a Mars hour carries Mars's active, driving quality; a Venus hour carries Venus's harmonious, affectionate quality; a Moon hour carries the Moon's reflective, emotional quality — and so on for each planet's hour.
-                      </p>
-                      <p>
-                        The benefit of working within the correct hour is reinforcement. An intention already aligned to a planet through its kamea gets a second, timing-based layer of alignment when it's also charged during that planet's hour — the theory being that the ritual is now working with the grain of that force twice over rather than once. It isn't considered mandatory; sigils are still charged successfully outside of matching hours. But choosing the right hour is treated as strengthening the working, similar to how choosing the right planet strengthens it over having no planetary alignment at all.
-                      </p>
-                      <p>
-                        In practice this means checking which planet currently rules the hour before charging a sigil, and where possible, waiting for or planning around the hour that matches the sigil's intention — the Timing section of this app calculates that schedule for your location automatically.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Planetary Kameas</h3>
-                    <div className="space-y-4">
-                      <p>
-                        A kamea is a magic square: a grid of numbers, unique to each planet, in which every row, column, and diagonal sums to the same total. Kameas appear in Hermetic and Renaissance magical texts, most notably Heinrich Cornelius Agrippa's <em>Three Books of Occult Philosophy</em>, as tools for constructing planetary talismans.
-                      </p>
-                      <p>
-                        Each kamea's size matches its planet: Saturn's is 3×3, Jupiter's 4×4, Mars's 5×5, the Sun's 6×6, Venus's 7×7, Mercury's 8×8, and the Moon's 9×9 — mirroring older astrological associations between the planets and those numbers.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">How Kameas Affect Sigil Magick</h3>
-                    <div className="space-y-4">
-                      <p>
-                        When a sigil is built on a planetary kamea, the letters of your intention are converted to numbers, those numbers are located inside the chosen planet's grid, and lines are drawn connecting them in sequence. The resulting shape is your sigil — but because it was traced across a specific planet's square, it's considered to carry that planet's symbolic quality alongside your intention.
-                      </p>
-                      <p>
-                        This is why choosing the right planet matters as much as the wording of the intention itself: the kamea acts as the "channel" the sigil is drawn through, shaping which force the symbol is understood to be aligned with.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <h2 className="text-3xl font-black text-cyan-200 pt-4">HOW TO DO SIGIL MAGICK</h2>
-
-                <div className="space-y-5">
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Phase 1: Construction (The Sentence Method)</h3>
-
-                    <div className="space-y-4">
-                      <p>
-                        <strong>Formulate the Statement of Intent:</strong> Write down your desire clearly and concisely. It must be in the positive present tense, avoiding phrases like “not” or “I want”.
-                      </p>
-
-                      <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
-                        <div className="text-red-200 font-black mb-2">Bad:</div>
-                        <div>“I don't want to be broke.”</div>
-                      </div>
-
-                      <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4">
-                        <div className="text-green-200 font-black mb-2">Good:</div>
-                        <div>“I HAVE ABUNDANT INCOME”</div>
-                      </div>
-
-                      <p>
-                        <strong>Choose the Right Planet and Hour:</strong> Match your intention to the planet whose domain it falls under — Jupiter for abundance, Mars for courage or action, Venus for love, Mercury for study or communication, the Sun for confidence or recognition, the Moon for emotional healing, Saturn for discipline or boundaries. This is the planet whose kamea you'll build the sigil on. Where possible, plan to charge the sigil during that planet's hour for the same reason — the Timing section calculates the current schedule of hours for your location, so you can see when that planet's hour is coming up.
-                      </p>
-
-                      <p>
-                        <strong>Eliminate Letters:</strong> Write the sentence in capital letters. Cross out all vowels (A, E, I, O, U).
-                      </p>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 font-mono text-cyan-200 break-all">
-                        I H A V E A B U N D A N T I N C O M E
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 font-mono text-violet-200 break-all">
-                        I H V B N D N T N C M
-                      </div>
-
-                      <p>
-                        <strong>Eliminate Repeating Consonants:</strong> Cross out repeating consonants while keeping only the first occurrence.
-                      </p>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 font-mono text-yellow-200 break-all">
-                        Final Letters: I H V B N D T C M
-                      </div>
-
-                      <p>
-                        <strong>Construct the Glyph:</strong> Turn the letters into numbers using alphabetical values.
-                      </p>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 space-y-2 font-mono text-sm">
-                        <div>A = 1</div>
-                        <div>B = 2</div>
-                        <div>C = 3</div>
-                        <div>K = 11</div>
-                        <div>X = 24</div>
-                      </div>
-
-                      <p>
-                        Draw out a planetary kamea corresponding to your desire and trace lines or curves between the resulting numbers.
-                      </p>
-
-                      <p>
-                        Sometimes a number is larger than the maximum number within a kamea. In that case reduce the number by adding the digits together.
-                      </p>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 space-y-2 font-mono text-cyan-200">
-                        <div>11 = 1 + 1 = 2</div>
-                        <div>24 = 2 + 4 = 6</div>
-                        <div>20 = 2 + 0 = 2</div>
-                      </div>
-
-                      <p>
-                        Once the numbers fit inside the chosen kamea, connect them through lines or curves and a random-looking symbol will emerge — this becomes your sigil.
-                      </p>
-
-                      <p>
-                        <strong>Goal:</strong> The final symbol should be simple enough to visualize mentally, yet abstract enough that the conscious mind no longer easily recognizes the original sentence.
-                      </p>
-
-                      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4 text-violet-100">
-                        Everything described above can be done automatically with this app — simply write your statement of intent, choose your planetary force, and the sigil will be generated for you.
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Phase 2: Charging (The Gnostic State)</h3>
-
-                    <div className="space-y-4">
-                      <p>
-                        The goal is to move the sigil from the conscious mind into the subconscious through intense one-pointed focus during an altered state of consciousness known as Gnosis.
-                      </p>
-
-                      <p>
-                        <strong>Select a Gnostic Technique:</strong> Use either inhibition methods (meditation, breath holding) or excitation methods (dance, emotional intensity, trance).
-                      </p>
-
-                      <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-                        <div className="font-black text-cyan-100 mb-2">Example 1 — Inhibition</div>
-                        <div>
-                          Focus on the sigil while practicing 4-4-4-4 breathing: inhale 4 seconds, hold 4 seconds, exhale 4 seconds, pause 4 seconds.
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4">
-                        <div className="font-black text-yellow-100 mb-2">Example 2 — Death Posture</div>
-                        <div>
-                          Stand on the balls of your feet with arms raised and body tensed until exhaustion. At the peak of mental emptiness, lock your gaze onto the sigil.
-                        </div>
-                      </div>
-
-                      <p>
-                        Another traditional method is gazing meditation (Trataka). Stare at the sigil without blinking while maintaining intense concentration until the image appears to glow, distort, disappear, or float.
-                      </p>
-
-                      <p>
-                        <strong>Charge the Sigil:</strong> At the peak of gnosis, project emotional intensity into the symbol. Visualize it glowing, vibrating, burning, or radiating energy.
-                      </p>
-
-                      <p>
-                        <strong>Banishment:</strong> At maximum intensity, abruptly shift your focus away from the ritual and consciously stop thinking about the desire.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="text-xl font-black text-white mb-3">Phase 3: Activation & Release</h3>
-
-                    <div className="space-y-4">
-                      <p>
-                        <strong>Destruction:</strong> Burn, bury, or wash away the sigil to symbolize final release into the subconscious.
-                      </p>
-
-                      <p>
-                        <strong>Forgetting:</strong> This is traditionally considered the most important step. The sigil should no longer be consciously obsessed over after activation.
-                      </p>
-
-                      <p>
-                        <strong>Recording:</strong> Log the operation, date, method, and intention in a magical journal.
-                      </p>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/40 p-4 space-y-3">
-                        <div>
-                          <div className="font-black text-green-200">Active Method</div>
-                          <div className="text-zinc-300">The sigil is destroyed immediately after charging.</div>
-                        </div>
-
-                        <div>
-                          <div className="font-black text-cyan-200">Passive Method</div>
-                          <div className="text-zinc-300">The sigil is placed on the body, talisman, artwork, candle, or object and allowed to operate gradually over time.</div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-100">
-                        Important: Traditionally, sigils are not shown to others because outside attention is believed to weaken the operation through conscious interference.
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className="space-y-5 text-sm leading-relaxed text-zinc-300 mt-6">
+                {PRACTICE_GUIDE.map((b, i) => renderGuideBlock(b, i))}
               </div>
             )}
 
