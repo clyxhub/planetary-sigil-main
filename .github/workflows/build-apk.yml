@@ -61,7 +61,21 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle-build.log
+      - name: Publish build log on failure
+        if: failure()
+        working-directory: android
+        run: |
+          git config user.name ci-log
+          git config user.email ci-log@local
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git fetch origin ci-log || git branch ci-log
+          git checkout -B ci-log
+          git add gradle-build.log
+          git commit -m "gradle log for ${{ github.sha }}" || exit 0
+          git push origin ci-log
 
       # Prove the native components for the three system features survived
       # manifest merging / build into the signed APK.
