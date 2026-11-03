@@ -160,7 +160,7 @@ class PlanetaryAlarmPlugin : Plugin() {
         context.getSystemService(NotificationManager::class.java)
             .cancel(AlarmNotifications.ALARM_NOTIFICATION_ID)
         try {
-            sendBroadcast(Intent(this, AlarmReceiver::class.java).setAction(AlarmReceiver.ACTION_DISMISS))
+            sendBroadcast(Intent(context, AlarmReceiver::class.java).setAction(AlarmReceiver.ACTION_DISMISS))
         } catch (_: Exception) {}
         call.resolve()
     }
