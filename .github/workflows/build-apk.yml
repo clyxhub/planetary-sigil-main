@@ -67,4 +67,5 @@ jobs:
       - name: Surface errors as annotations
         if: failure()
         working-directory: android
-        run: grep -E '^[[:space:]]*e: |error:|FAILURE:|What went wrong|Caused by' gradle-build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+        run: |
+          grep -E '^[[:space:]]*e: |error:|FAILURE:|What went wrong|Caused by' gradle-build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
