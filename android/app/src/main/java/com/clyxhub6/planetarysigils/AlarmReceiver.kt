@@ -84,8 +84,6 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.e(TAG, "Could not start AlarmService", e)
         }
     }
-    }
-
     private fun stopAlarmOutput(context: Context) {
         try { context.stopService(Intent(context, AlarmService::class.java)) } catch (_: Exception) {}
         context.getSystemService(NotificationManager::class.java)
