@@ -20,12 +20,19 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 class AlarmActivity : AppCompatActivity() {
-
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
 
+    companion object {
+        private const val TAG = "AlarmActivity"
+        // Requirement 3: lets the kill switch (PlanetaryAlarm.stopAlarm) close a
+        // stuck alarm screen and stop its audio from anywhere.
+        @Volatile var instance: AlarmActivity? = null
+            private set
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
 
         // Show on lock screen and wake the display
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -139,10 +146,7 @@ class AlarmActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         stopAlarm()
+        instance = null
         super.onDestroy()
-    }
-
-    companion object {
-        private const val TAG = "AlarmActivity"
     }
 }

@@ -46,13 +46,30 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun fireAlarm(context: Context, planetName: String, timestamp: Long) {
         AlarmNotifications.ensureChannels(context)
-
         // Post the alarm notification first so it appears (and heads-up shows)
         // even if starting the foreground service is delayed.
         val notification = AlarmNotifications.buildAlarmNotification(context, planetName, timestamp)
         context.getSystemService(NotificationManager::class.java)
             .notify(AlarmNotifications.ALARM_NOTIFICATION_ID, notification)
-
+        // Requirement 2: the full alarm banner (Snooze + Dismiss up front) must
+        // overlay whatever is on screen at fire time — not just when the screen
+        // is off. Always launch AlarmActivity; when the screen is off it comes
+        // up over the lock screen (showWhenLocked/turnScreenOn) like a normal
+        // phone alarm. The notification remains as backup if the launch fails.
+        try {
+            val launch = Intent(context, AlarmActivity::class.java).apply {
+                putExtra("planetName", planetName)
+                putExtra("timestamp", timestamp)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+            context.startActivity(launch)
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not launch AlarmActivity", e)
+        }
         try {
             val svc = Intent(context, AlarmService::class.java).apply {
                 putExtra("planetName", planetName)
@@ -66,6 +83,7 @@ class AlarmReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             Log.e(TAG, "Could not start AlarmService", e)
         }
+    }
     }
 
     private fun stopAlarmOutput(context: Context) {

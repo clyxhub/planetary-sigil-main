@@ -25,9 +25,20 @@ class AlarmService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    // Requirement 3 failsafe: if the user cannot reach the alarm UI (e.g. the
+    // alarm screen failed to show), the alarm must still stop by itself. The
+    // service force-stops after MAX_RING_MS so it can never ring forever.
+    private val autoStop = object : Runnable {
+        override fun run() {
+            Log.w(TAG, "Alarm auto-stopped after ${MAX_RING_MS / 60000} minutes")
+            stopSelf()
+        }
+    }
 
+    override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        isRinging = true
+        handler.postDelayed(autoStop, MAX_RING_MS)
         val planetName = intent?.getStringExtra("planetName") ?: "Unknown"
         val timestamp = intent?.getLongExtra("timestamp", 0L) ?: 0L
 
@@ -81,6 +92,8 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
+        isRinging = false
+        handler.removeCallbacks(autoStop)
         try {
             mediaPlayer?.stop()
             mediaPlayer?.release()
@@ -93,5 +106,13 @@ class AlarmService : Service() {
 
     companion object {
         private const val TAG = "AlarmService"
+        private const val MAX_RING_MS = 10 * 60_000L
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        @Volatile var isRinging: Boolean = false
+            private set
+        /** Force-stop the ringing alarm from anywhere (kill switch). */
+        fun stopRing(context: Context) {
+            try { context.stopService(Intent(context, AlarmService::class.java)) } catch (_: Exception) {}
+        }
     }
 }

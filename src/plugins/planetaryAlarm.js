@@ -48,6 +48,8 @@ const PlanetaryAlarm = registerPlugin('PlanetaryAlarm', {
     async setDefaultAlarmSound() {
       return { uri: '', name: 'Default alarm' }
     },
+    async stopAlarm() { return {} },
+    async isAlarmRinging() { return { value: false } },
   }),
 })
 

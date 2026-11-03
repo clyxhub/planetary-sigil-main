@@ -134,6 +134,51 @@ input[type="range"]::-moz-range-thumb {
 [data-theme="night"] { color-scheme: dark; }
 [data-theme="light"] { color-scheme: light; }
 
+/* Tinted themes must also tint the app's actual surfaces (the wrapper and
+   cards hardcode bg-black), otherwise only the glow changes and every theme
+   looks like plain dark. Each theme paints its own deep-toned base. */
+[data-theme="ocean"] .bg-black {
+  background-color: #062a45;
+}
+[data-theme="ocean"] .bg-black\/70,
+[data-theme="ocean"] .bg-black\/60,
+[data-theme="ocean"] .bg-black\/40 {
+  background-color: rgba(6, 42, 69, 0.75);
+}
+[data-theme="emerald"] .bg-black {
+  background-color: #04352a;
+}
+[data-theme="emerald"] .bg-black\/70,
+[data-theme="emerald"] .bg-black\/60,
+[data-theme="emerald"] .bg-black\/40 {
+  background-color: rgba(4, 53, 42, 0.75);
+}
+[data-theme="violet"] .bg-black {
+  background-color: #241d3d;
+}
+[data-theme="violet"] .bg-black\/70,
+[data-theme="violet"] .bg-black\/60,
+[data-theme="violet"] .bg-black\/40 {
+  background-color: rgba(36, 29, 61, 0.75);
+}
+[data-theme="rose"] .bg-black {
+  background-color: #37202c;
+}
+[data-theme="rose"] .bg-black\/70,
+[data-theme="rose"] .bg-black\/60,
+[data-theme="rose"] .bg-black\/40 {
+  background-color: rgba(55, 32, 44, 0.75);
+}
+/* The zinc panels (header buttons, menus) pick up the tint too. */
+[data-theme="ocean"] .bg-zinc-900\/70 { background-color: rgba(8, 47, 73, 0.7); }
+[data-theme="ocean"] .bg-zinc-950\/95, [data-theme="ocean"] .bg-zinc-950\/90 { background-color: rgba(3, 28, 47, 0.95); }
+[data-theme="emerald"] .bg-zinc-900\/70 { background-color: rgba(6, 59, 47, 0.7); }
+[data-theme="emerald"] .bg-zinc-950\/95, [data-theme="emerald"] .bg-zinc-950\/90 { background-color: rgba(2, 32, 25, 0.95); }
+[data-theme="violet"] .bg-zinc-900\/70 { background-color: rgba(49, 40, 82, 0.7); }
+[data-theme="violet"] .bg-zinc-950\/95, [data-theme="violet"] .bg-zinc-950\/90 { background-color: rgba(26, 21, 44, 0.95); }
+[data-theme="rose"] .bg-zinc-900\/70 { background-color: rgba(74, 42, 57, 0.7); }
+[data-theme="rose"] .bg-zinc-950\/95, [data-theme="rose"] .bg-zinc-950\/90 { background-color: rgba(43, 26, 35, 0.95); }
+
 /* Complete the light theme: darken light-tone accent text and adjust inputs. */
 [data-theme="light"] .text-cyan-100,
 [data-theme="light"] .text-cyan-200,

@@ -151,6 +151,27 @@ class PlanetaryAlarmPlugin : Plugin() {
 
     // ── Alarm sound selection ──────────────────────────────────────────────
 
+    // ── Requirement 3: kill switch for a runaway alarm ──────────────────────
+    @PluginMethod
+    fun stopAlarm(call: PluginCall) {
+        // Stop the service, the notification, and a stuck AlarmActivity.
+        AlarmService.stopRing(context)
+        AlarmActivity.instance?.let { it.runOnUiThread { it.finish() } }
+        context.getSystemService(NotificationManager::class.java)
+            .cancel(AlarmNotifications.ALARM_NOTIFICATION_ID)
+        try {
+            sendBroadcast(Intent(this, AlarmReceiver::class.java).setAction(AlarmReceiver.ACTION_DISMISS))
+        } catch (_: Exception) {}
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun isAlarmRinging(call: PluginCall) {
+        val ret = JSObject()
+        ret.put("value", AlarmService.isRinging)
+        call.resolve(ret)
+    }
+
     @PluginMethod
     fun getAlarmSound(call: PluginCall) {
         val ret = JSObject()

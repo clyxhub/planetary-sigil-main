@@ -478,6 +478,9 @@ export default function ChaosSigilForge() {
   const [theme, setTheme] = useState(() => loadPersist("ps_theme", "night"));
   const [cardBg, setCardBg] = useState(() => loadPersist("ps_cardbg", "white")); // white | black
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  // Requirement 3: in-app kill switch — if an alarm is ringing but the alarm
+  // screen is unreachable, the app always offers a "stop" banner.
+  const [alarmRinging, setAlarmRinging] = useState(false);
   const [alarmSound, setAlarmSound] = useState({ uri: "", name: "Default alarm" });
   const [soundModalOpen, setSoundModalOpen] = useState(false);
   const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
@@ -606,6 +609,29 @@ export default function ChaosSigilForge() {
     return viewedDate.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
   }, [dayOffset, viewedDate]);
 
+  // Requirement 1: before an alarm can be set, all alarm-related permissions
+  // must be granted. Already-granted ones are skipped; anything missing is
+  // requested immediately (notification, exact alarms, full-screen intent).
+  const ensureAlarmPermissions = async () => {
+    if (!(typeof window !== 'undefined' && window.Capacitor)) return true;
+    try {
+      const notif = await PlanetaryAlarm.hasNotificationPermission();
+      if (notif && !notif.value) await PlanetaryAlarm.requestNotificationPermission();
+    } catch (e) { /* ignore */ }
+    try {
+      const exact = await PlanetaryAlarm.hasExactAlarmPermission();
+      if (exact && !exact.value) await PlanetaryAlarm.requestExactAlarmPermission();
+    } catch (e) { /* ignore */ }
+    try {
+      const fsi = await PlanetaryAlarm.hasFullScreenIntentPermission();
+      if (fsi && !fsi.value) await PlanetaryAlarm.requestFullScreenIntentPermission();
+    } catch (e) { /* ignore */ }
+    try {
+      const after = await PlanetaryAlarm.hasNotificationPermission();
+      setNotifPermission(after && after.value ? "granted" : "denied");
+      return !!(after && after.value);
+    } catch (e) { return true; }
+  };
   const requestNotifPermission = async () => {
     if (typeof window !== 'undefined' && window.Capacitor) {
       try {
@@ -616,6 +642,24 @@ export default function ChaosSigilForge() {
     Notification.requestPermission().then((perm) => setNotifPermission(perm));
   };
 
+  // Requirement 3: poll whether an alarm is ringing so the in-app kill switch
+  // banner appears even if the full-screen alarm failed to launch.
+  useEffect(() => {
+    if (!(typeof window !== "undefined" && window.Capacitor)) return;
+    let alive = true;
+    const tick = () => {
+      PlanetaryAlarm.isAlarmRinging()
+        .then((r) => { if (alive) setAlarmRinging(!!(r && r.value)); })
+        .catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  const stopRingingAlarm = async () => {
+    try { await PlanetaryAlarm.stopAlarm(); } catch (e) { /* ignore */ }
+    setAlarmRinging(false);
+  };
   // ── Alarm sound selection ────────────────────────────────────────────────
   const loadAlarmSound = useCallback(async () => {
     if (!(typeof window !== "undefined" && window.Capacitor)) return;
@@ -678,10 +722,10 @@ export default function ChaosSigilForge() {
     if (typeof window !== 'undefined' && window.Capacitor) {
       try {
         if (isAdding) {
-          try {
-            const hasExact = await PlanetaryAlarm.hasExactAlarmPermission();
-            if (hasExact && !hasExact.value) await PlanetaryAlarm.requestExactAlarmPermission();
-          } catch (e) { /* ignore */ }
+          // Requirement: before an alarm can be set, notification + exact-alarm
+          // (+ full-screen-intent) permissions must be granted. If already
+          // granted this is a no-op; if not, the system request fires now.
+          await ensureAlarmPermissions();
           await PlanetaryAlarm.schedule({ ...opts, leadMinutes });
           setSoundModalOpen(true);
         } else {
@@ -1037,6 +1081,17 @@ export default function ChaosSigilForge() {
           </div>
         </div>
       </header>
+      {alarmRinging && (
+        <div className="sticky top-[76px] z-50 mx-4 mt-2 rounded-2xl border border-red-500/40 bg-red-950/90 px-4 py-3 flex items-center justify-between gap-3 shadow-[0_0_30px_rgba(239,68,68,0.35)]">
+          <span className="text-sm font-semibold text-red-200">⏰ Alarm is ringing</span>
+          <button
+            onClick={stopRingingAlarm}
+            className="rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-400 transition-colors"
+          >
+            Stop alarm
+          </button>
+        </div>
+      )}
 
       {menuOpen && (
         <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md overflow-y-auto">
