@@ -20,7 +20,7 @@ export async function initAds() {
   }
 }
 
-export async function showBanner({ testing = false } = {}) {
+export async function showBanner({ testing = true } = {}) {
   if (!isNative()) return
   try {
     if (!initialized) await initAds()

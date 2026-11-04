@@ -568,7 +568,7 @@ export default function ChaosSigilForge() {
     let cancelled = false;
     (async () => {
       await initAds();
-      if (!cancelled) await showBanner({ testing: false });
+      if (!cancelled) await showBanner({ testing: true });
     })();
     return () => { cancelled = true; };
   }, []);
