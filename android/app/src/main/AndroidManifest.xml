@@ -10,6 +10,11 @@
         android:windowLayoutInDisplayCutoutMode="shortEdges"
         android:theme="@style/AppTheme">
 
+        <!-- AdMob application id (required by the Google Mobile Ads SDK) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-4971705725374261~1094094310" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".MainActivity"

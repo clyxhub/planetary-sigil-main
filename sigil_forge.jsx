@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Geolocation } from '@capacitor/geolocation';
 import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
+import { initAds, showBanner, adsAvailable } from './src/plugins/admob';
 import { PLANET_SEALS } from './src/planetarySeals';
 import { PRACTICE_GUIDE } from './src/practiceGuide';
 import {
@@ -557,6 +558,19 @@ export default function ChaosSigilForge() {
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // On open (native APK), initialise AdMob and show the banner ad.
+  // No-op on the web build. testing:true would force Google test ads —
+  // keep false for the real unit once the account is live.
+  useEffect(() => {
+    if (!adsAvailable()) return;
+    let cancelled = false;
+    (async () => {
+      await initAds();
+      if (!cancelled) await showBanner({ testing: false });
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const requestLocation = async () => {
