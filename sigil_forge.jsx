@@ -1056,9 +1056,6 @@ export default function ChaosSigilForge() {
         className="absolute inset-0 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: `radial-gradient(circle at top, ${activeTheme.glow}, transparent 40%)` }}
       />
-      {bannerHeight > 0 && (
-        <div aria-hidden="true" style={{ height: bannerHeight }} />
-      )}
 
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between safe-top">
@@ -1858,6 +1855,9 @@ export default function ChaosSigilForge() {
             </button>
           </div>
         </div>
+      )}
+      {bannerHeight > 0 && (
+        <div aria-hidden="true" style={{ height: bannerHeight }} />
       )}
     </div>
   );
