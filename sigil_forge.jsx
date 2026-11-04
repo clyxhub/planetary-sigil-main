@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Geolocation } from '@capacitor/geolocation';
 import { PlanetaryAlarm } from './src/plugins/planetaryAlarm';
-import { initAds, showBanner, adsAvailable } from './src/plugins/admob';
+import { initAds, showBanner, adsAvailable, onBannerSize } from './src/plugins/admob';
 import { PLANET_SEALS } from './src/planetarySeals';
 import { PRACTICE_GUIDE } from './src/practiceGuide';
 import {
@@ -560,6 +560,10 @@ export default function ChaosSigilForge() {
     return () => clearInterval(id);
   }, []);
 
+  // Reserve space at the bottom of the page equal to the native banner height.
+  // The banner is anchored to the window bottom; the spacer keeps content out
+  // from under it (and, with safe-area handled above, out from under the nav bar).
+  const [bannerHeight, setBannerHeight] = useState(0);
   // On open (native APK), initialise AdMob and show the banner ad.
   // No-op on the web build. testing:true would force Google test ads —
   // keep false for the real unit once the account is live.
@@ -570,7 +574,13 @@ export default function ChaosSigilForge() {
       await initAds();
       if (!cancelled) await showBanner({ testing: true });
     })();
-    return () => { cancelled = true; };
+    const off = onBannerSize((h) => {
+      if (!cancelled) setBannerHeight(h);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
   }, []);
 
   const requestLocation = async () => {
@@ -1046,6 +1056,9 @@ export default function ChaosSigilForge() {
         className="absolute inset-0 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: `radial-gradient(circle at top, ${activeTheme.glow}, transparent 40%)` }}
       />
+      {bannerHeight > 0 && (
+        <div aria-hidden="true" style={{ height: bannerHeight }} />
+      )}
 
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between safe-top">
@@ -1109,7 +1122,10 @@ export default function ChaosSigilForge() {
 
       {menuOpen && (
         <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="max-w-[900px] ml-auto min-h-dvh bg-zinc-950 border-l border-white/10 p-6 pb-[env(safe-area-inset-bottom,2rem)]">
+          <div
+            className="max-w-[900px] ml-auto min-h-dvh bg-zinc-950 border-l border-white/10 p-6"
+            style={{ paddingBottom: `calc(env(safe-area-inset-bottom, 2rem) + ${bannerHeight}px)` }}
+          >
             <div className="mt-16 flex gap-3 overflow-x-auto pb-4">
               {[
                 { key: 'guide', label: 'Practice', icon: MoonStar, color: 'cyan' },
