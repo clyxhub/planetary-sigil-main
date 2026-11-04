@@ -66,7 +66,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -o pipefail
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle-build.log
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee gradle-build.log
       - name: Verify receivers and permissions in APK
         if: success()
         working-directory: android
@@ -86,15 +86,26 @@ jobs:
           name: planetary-sigils-apk
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-      - name: Rename APK for release
+      - name: Upload AAB artifact (Play Store)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planetary-sigils-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+      - name: Rename outputs for release
         if: success()
         working-directory: android
-        run: cp app/build/outputs/apk/release/*.apk "$RUNNER_TEMP/planetary-sigils.apk"
-      - name: Attach APK to latest release
+        run: |
+          cp app/build/outputs/apk/release/*.apk "$RUNNER_TEMP/planetary-sigils.apk"
+          cp app/build/outputs/bundle/release/*.aab "$RUNNER_TEMP/planetary-sigils.aab"
+      - name: Attach APK and AAB to latest release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest APK
-          files: ${{ runner.temp }}/planetary-sigils.apk
+          name: Latest APK + AAB
+          files: |
+            ${{ runner.temp }}/planetary-sigils.apk
+            ${{ runner.temp }}/planetary-sigils.aab
           make_latest: true

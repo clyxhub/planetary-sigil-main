@@ -1142,7 +1142,7 @@ export default function ChaosSigilForge() {
               <div className="space-y-4 mt-6">
                 <h2 className="text-3xl font-black text-green-200">Planetary Hours</h2>
                 <p className="text-zinc-400 text-sm">
-                  Each hour of day and night is ruled by one of the seven planets. Sigil work is traditionally timed to the hour of the planet it's aligned with — a Mars sigil during a Mars hour, a Venus sigil during a Venus hour, and so on. This is calculated entirely on your device from your location and the current time — no internet connection required.
+                  Each hour of day and night is ruled by one of the seven planets. Sigil work is traditionally timed to the hour of the planet it's aligned with — a Mars sigil during a Mars hour, a Venus sigil during a Venus hour, and so on. This is calculated entirely on your device from your location and the current time.
                 </p>
 
                 {!coords && (
