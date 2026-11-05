@@ -1051,7 +1051,11 @@ export default function ChaosSigilForge() {
   const activeTheme = THEMES.find((t) => t.id === theme) || THEMES[0];
 
   return (
-    <div className="min-h-dvh bg-black text-white overflow-x-hidden relative" data-theme={theme}>
+    <div
+      className="min-h-dvh bg-black text-white overflow-x-hidden relative"
+      data-theme={theme}
+      style={bannerHeight > 0 ? { paddingBottom: bannerHeight } : undefined}
+    >
       <div
         className="absolute inset-0 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: `radial-gradient(circle at top, ${activeTheme.glow}, transparent 40%)` }}
@@ -1855,9 +1859,6 @@ export default function ChaosSigilForge() {
             </button>
           </div>
         </div>
-      )}
-      {bannerHeight > 0 && (
-        <div aria-hidden="true" style={{ height: bannerHeight }} />
       )}
     </div>
   );
