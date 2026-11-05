@@ -46,7 +46,7 @@ function bottomInsetDp() {
   }
 }
 
-export async function showBanner({ testing = true } = {}) {
+export async function showBanner({ testing = false } = {}) {
   if (!isNative()) return
   try {
     if (!initialized) await initAds()

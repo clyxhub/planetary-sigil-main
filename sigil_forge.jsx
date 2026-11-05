@@ -566,13 +566,13 @@ export default function ChaosSigilForge() {
   const [bannerHeight, setBannerHeight] = useState(0);
   // On open (native APK), initialise AdMob and show the banner ad.
   // No-op on the web build. testing:true would force Google test ads —
-  // keep false for the real unit once the account is live.
+  // testing is false here, so the real ad unit is used.
   useEffect(() => {
     if (!adsAvailable()) return;
     let cancelled = false;
     (async () => {
       await initAds();
-      if (!cancelled) await showBanner({ testing: true });
+      if (!cancelled) await showBanner({ testing: false });
     })();
     const off = onBannerSize((h) => {
       if (!cancelled) setBannerHeight(h);
