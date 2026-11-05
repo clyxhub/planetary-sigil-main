@@ -104,7 +104,33 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest APK + AAB
+          name: "Planetary Sigils v1.0 (build ${{ github.run_number }})"
+          body: |
+            ## Planetary Sigils v1.0 — build ${{ github.run_number }}
+
+            Built from commit `${{ github.sha }}` on ${{ github.ref_name }}.
+
+            ### Install
+            1. Download `planetary-sigils.apk` below.
+            2. Allow "install from unknown sources" if your phone asks.
+            3. Existing installs update in place — no need to uninstall.
+
+            ### What's in this build
+            - **AdMob banner** served at the bottom of the app using the real ad unit.
+            - **Banner clears the navigation bar** — the ad view is inset by the
+              device's real system-bar height natively, so it is no longer
+              cropped or hidden behind the gesture/nav bar.
+            - **Page content reserves the banner height** from first paint, so the
+              ad never covers the page or the slide-out menu.
+            - **AAB included** for Google Play upload: `planetary-sigils.aab`.
+
+            ### Notes
+            - `versionName` 1.0 — first Play-ready release.
+            - Real ad fill depends on AdMob account status and is not guaranteed
+              to appear immediately on a freshly created ad unit.
+
+            ### Changes since the previous build
+            ${{ github.event.head_commit.message }}
           files: |
             ${{ runner.temp }}/planetary-sigils.apk
             ${{ runner.temp }}/planetary-sigils.aab
